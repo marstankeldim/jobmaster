@@ -243,7 +243,6 @@ def write_generated_letter(job_id: int, content: str, db_path: Path = DB_PATH) -
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
     safe_company = "".join(char.lower() if char.isalnum() else "-" for char in job["company"]).strip("-")
     safe_title = "".join(char.lower() if char.isalnum() else "-" for char in job["title"]).strip("-")
-    output_path = GENERATED_DIR / f"{job_id}-{safe_company}-{safe_title}.txt"
+    output_path = GENERATED_DIR / f"{job_id}-{safe_company}-{safe_title}.tex"
     output_path.write_text(content.rstrip() + "\n", encoding="utf-8")
     return output_path
-

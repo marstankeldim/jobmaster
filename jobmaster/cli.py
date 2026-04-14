@@ -5,7 +5,7 @@ from pathlib import Path
 from wsgiref.simple_server import make_server
 
 from .autofill import run_autofill
-from .cover_letters import render_cover_letter
+from .cover_letters import latex_to_text, render_cover_letter
 from .db import export_jobs_csv, get_job, init_db, log_event, save_generated_cover_letter, write_generated_letter
 from .storage import ensure_user_files, load_answers, load_cover_letter_template, load_profile
 from .web import app
@@ -55,14 +55,14 @@ def command_autofill(job_id: int, url: str | None, headless: bool, submit: bool)
     if not target_url:
         raise SystemExit("No application URL found. Add one to the job or pass --url.")
 
-    cover_letter = job.get("generated_cover_letter") or render_cover_letter(
+    cover_letter_latex = job.get("generated_cover_letter") or render_cover_letter(
         load_cover_letter_template(), job, load_profile()
     )
     result = run_autofill(
         target_url,
         load_profile(),
         load_answers(),
-        cover_letter,
+        latex_to_text(cover_letter_latex),
         headless=headless,
         submit=submit,
     )
@@ -122,4 +122,3 @@ def main() -> None:
         command_autofill(args.job, args.url, args.headless, args.submit)
     else:
         parser.error("Unknown command")
-

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import mimetypes
+from dataclasses import dataclass
+from email.parser import BytesParser
+from email.policy import default
 from html import escape
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs
 
 from .config import STATUS_OPTIONS, TEMPLATE_FIELDS
-from .cover_letters import render_cover_letter
+from .cover_letters import latex_to_text, render_cover_letter
 from .db import (
     create_job,
     export_jobs_csv,
@@ -29,10 +33,18 @@ from .storage import (
     save_answers,
     save_cover_letter_template,
     save_profile,
+    save_resume_upload,
 )
 
 
 STATIC_CSS = Path(__file__).with_name("static").joinpath("styles.css").read_text(encoding="utf-8")
+
+
+@dataclass
+class UploadedFile:
+    filename: str
+    content_type: str
+    content: bytes
 
 
 def html_page(title: str, body: str, active: str = "dashboard", notice: str = "") -> bytes:
@@ -72,11 +84,35 @@ def html_page(title: str, body: str, active: str = "dashboard", notice: str = ""
     return html.encode("utf-8")
 
 
-def parse_post(environ: dict[str, Any]) -> dict[str, str]:
+def parse_request(environ: dict[str, Any]) -> tuple[dict[str, str], dict[str, UploadedFile]]:
     size = int(environ.get("CONTENT_LENGTH") or 0)
-    raw = environ["wsgi.input"].read(size).decode("utf-8")
+    body = environ["wsgi.input"].read(size)
+    content_type = environ.get("CONTENT_TYPE", "")
+    if content_type.startswith("multipart/form-data"):
+        message = BytesParser(policy=default).parsebytes(
+            f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8") + body
+        )
+        fields: dict[str, str] = {}
+        files: dict[str, UploadedFile] = {}
+        for part in message.iter_parts():
+            name = part.get_param("name", header="content-disposition")
+            if not name:
+                continue
+            filename = part.get_filename()
+            payload = part.get_payload(decode=True) or b""
+            if filename:
+                files[name] = UploadedFile(
+                    filename=filename,
+                    content_type=part.get_content_type(),
+                    content=payload,
+                )
+            else:
+                fields[name] = payload.decode("utf-8").strip()
+        return fields, files
+
+    raw = body.decode("utf-8")
     parsed = parse_qs(raw, keep_blank_values=True)
-    return {key: values[0] if values else "" for key, values in parsed.items()}
+    return {key: values[0] if values else "" for key, values in parsed.items()}, {}
 
 
 def response(start_response: Any, status: str, body: bytes, headers: list[tuple[str, str]] | None = None) -> list[bytes]:
@@ -237,6 +273,10 @@ def settings_page(notice: str = "") -> bytes:
     answers = load_answers()
     template = load_cover_letter_template()
     template_help = ", ".join(TEMPLATE_FIELDS)
+    resume_path = str(profile.get("resume_path", "")).strip()
+    resume_exists = Path(resume_path).expanduser().exists() if resume_path else False
+    resume_status = "Resume on file" if resume_exists else "No uploaded resume found yet"
+    resume_link = '<a href="/resume">Open current resume</a>' if resume_exists else ""
     body = f"""
     <main class="grid two-up">
       <section class="card stack">
@@ -252,7 +292,6 @@ def settings_page(notice: str = "") -> bytes:
           <label>LinkedIn<input type="url" name="linkedin" value="{escape(str(profile.get('linkedin', '')))}"></label>
           <label>GitHub<input type="url" name="github" value="{escape(str(profile.get('github', '')))}"></label>
           <label>Portfolio<input type="url" name="portfolio" value="{escape(str(profile.get('portfolio', '')))}"></label>
-          <label>Resume path<input type="text" name="resume_path" value="{escape(str(profile.get('resume_path', '')))}"></label>
           <label>Work authorization<input type="text" name="work_authorization" value="{escape(str(profile.get('work_authorization', '')))}"></label>
           <label>Sponsorship needed<input type="text" name="sponsorship_needed" value="{escape(str(profile.get('sponsorship_needed', '')))}"></label>
           <label>Salary expectation<input type="text" name="salary_expectation" value="{escape(str(profile.get('salary_expectation', '')))}"></label>
@@ -261,6 +300,20 @@ def settings_page(notice: str = "") -> bytes:
           <label class="wide">Top skills<input type="text" name="top_skills" value="{escape(str(profile.get('top_skills', '')))}"></label>
           <label class="wide">Professional summary<textarea name="summary" rows="6">{escape(str(profile.get('summary', '')))}</textarea></label>
           <button class="primary" type="submit">Save profile</button>
+        </form>
+      </section>
+      <section class="card stack">
+        <div class="section-head">
+          <h2>Resume</h2>
+          <p>{escape(resume_status)}. Current path: {escape(resume_path or 'Not set')} {resume_link}</p>
+        </div>
+        <form method="post" action="/settings/resume" enctype="multipart/form-data" class="stack">
+          <label class="wide">Upload resume<input type="file" name="resume_file" accept=".pdf,.doc,.docx,.txt,.rtf"></label>
+          <button class="primary" type="submit">Upload resume</button>
+        </form>
+        <form method="post" action="/settings/resume-path" class="stack">
+          <label class="wide">Or set an existing local resume path<input type="text" name="resume_path" value="{escape(resume_path)}" placeholder="data/uploads/resume.pdf"></label>
+          <button class="primary" type="submit">Save resume path</button>
         </form>
       </section>
       <section class="card stack">
@@ -275,7 +328,7 @@ def settings_page(notice: str = "") -> bytes:
       </section>
       <section class="card stack wide">
         <div class="section-head">
-          <h2>Cover letter template</h2>
+          <h2>LaTeX cover letter template</h2>
           <p>Available placeholders: {escape(template_help)}</p>
         </div>
         <form method="post" action="/settings/template" class="stack">
@@ -297,6 +350,7 @@ def job_detail_page(job_id: int, notice: str = "") -> bytes:
     profile = load_profile()
     template = load_cover_letter_template()
     cover_letter = job.get("generated_cover_letter") or render_cover_letter(template, job, profile)
+    plain_cover_letter = latex_to_text(cover_letter)
     options = []
     for status in STATUS_OPTIONS:
         selected = " selected" if status == job["status"] else ""
@@ -335,11 +389,15 @@ def job_detail_page(job_id: int, notice: str = "") -> bytes:
       <section class="card stack">
         <div class="section-head">
           <h2>Cover letter</h2>
-          <p>Generate from your template and this job’s details.</p>
+          <p>Generate from your LaTeX template and this job’s details.</p>
         </div>
         <form method="post" action="/jobs/{job_id}/generate">
           <button class="primary" type="submit">Generate cover letter</button>
         </form>
+        <div class="command-box">
+          <p>Autofill uses a plain-text version of this LaTeX output for web forms.</p>
+          <code>{escape(plain_cover_letter[:280] + ('...' if len(plain_cover_letter) > 280 else ''))}</code>
+        </div>
         <pre class="letter-preview">{escape(cover_letter)}</pre>
       </section>
       <section class="card stack wide">
@@ -366,7 +424,7 @@ def app(environ: dict[str, Any], start_response: Any) -> list[bytes]:
     if effective_method == "GET" and path == "/jobs":
         return response(start_response, "200 OK", jobs_page())
     if method == "POST" and path == "/jobs":
-        payload = parse_post(environ)
+        payload, _ = parse_request(environ)
         if payload.get("company") and payload.get("title"):
             create_job(
                 company=payload["company"],
@@ -381,11 +439,29 @@ def app(environ: dict[str, Any], start_response: Any) -> list[bytes]:
     if effective_method == "GET" and path == "/settings":
         return response(start_response, "200 OK", settings_page())
     if method == "POST" and path == "/settings/profile":
-        payload = parse_post(environ)
-        save_profile(payload)
+        payload, _ = parse_request(environ)
+        current_profile = load_profile()
+        current_profile.update(payload)
+        save_profile(current_profile)
         return response(start_response, "200 OK", settings_page(notice="Profile saved."))
+    if method == "POST" and path == "/settings/resume":
+        payload, files = parse_request(environ)
+        uploaded = files.get("resume_file")
+        if uploaded is None or not uploaded.content:
+            return response(start_response, "200 OK", settings_page(notice="Choose a resume file to upload."))
+        saved_path = save_resume_upload(uploaded.filename, uploaded.content)
+        profile = load_profile()
+        profile["resume_path"] = str(saved_path)
+        save_profile(profile)
+        return response(start_response, "200 OK", settings_page(notice=f"Resume uploaded to {saved_path}."))
+    if method == "POST" and path == "/settings/resume-path":
+        payload, _ = parse_request(environ)
+        profile = load_profile()
+        profile["resume_path"] = payload.get("resume_path", "").strip()
+        save_profile(profile)
+        return response(start_response, "200 OK", settings_page(notice="Resume path saved."))
     if method == "POST" and path == "/settings/answers":
-        payload = parse_post(environ)
+        payload, _ = parse_request(environ)
         try:
             parsed = json.loads(payload.get("answers_json", "{}"))
             save_answers(parsed)
@@ -393,9 +469,25 @@ def app(environ: dict[str, Any], start_response: Any) -> list[bytes]:
         except json.JSONDecodeError:
             return response(start_response, "200 OK", settings_page(notice="Answer bank JSON is invalid."))
     if method == "POST" and path == "/settings/template":
-        payload = parse_post(environ)
+        payload, _ = parse_request(environ)
         save_cover_letter_template(payload.get("template", ""))
-        return response(start_response, "200 OK", settings_page(notice="Cover letter template saved."))
+        return response(start_response, "200 OK", settings_page(notice="LaTeX cover letter template saved."))
+    if effective_method == "GET" and path == "/resume":
+        resume_path = Path(str(load_profile().get("resume_path", "") or "")).expanduser()
+        if not resume_path.exists() or not resume_path.is_file():
+            return response(
+                start_response,
+                "404 Not Found",
+                html_page("Resume Not Found", '<main class="card"><p>No resume file is configured yet.</p></main>', active="settings"),
+            )
+        body = resume_path.read_bytes()
+        content_type, _ = mimetypes.guess_type(str(resume_path))
+        headers = [
+            ("Content-Type", content_type or "application/octet-stream"),
+            ("Content-Length", str(len(body))),
+            ("Content-Disposition", f'inline; filename="{resume_path.name}"'),
+        ]
+        return response(start_response, "200 OK", body, headers=headers)
     if effective_method == "GET" and path == "/export.csv":
         export_path = export_jobs_csv(Path("data/applications.csv"))
         body = export_path.read_bytes()
@@ -420,7 +512,7 @@ def app(environ: dict[str, Any], start_response: Any) -> list[bytes]:
             if effective_method == "GET" and len(parts) == 2:
                 return response(start_response, "200 OK", job_detail_page(job_id))
             if method == "POST" and len(parts) == 3 and parts[2] == "update":
-                payload = parse_post(environ)
+                payload, _ = parse_request(environ)
                 update_job(job_id, payload)
                 return response(start_response, "200 OK", job_detail_page(job_id, notice="Job updated."))
             if method == "POST" and len(parts) == 3 and parts[2] == "generate":

@@ -9,8 +9,10 @@ DATA_DIR = ROOT_DIR / "data"
 DB_PATH = DATA_DIR / "jobmaster.db"
 PROFILE_PATH = DATA_DIR / "profile.json"
 ANSWERS_PATH = DATA_DIR / "answers.json"
-COVER_LETTER_TEMPLATE_PATH = DATA_DIR / "cover_letter_template.txt"
+COVER_LETTER_TEMPLATE_PATH = DATA_DIR / "cover_letter_template.tex"
+LEGACY_COVER_LETTER_TEMPLATE_PATH = DATA_DIR / "cover_letter_template.txt"
 GENERATED_DIR = DATA_DIR / "generated"
+UPLOADS_DIR = DATA_DIR / "uploads"
 
 STATUS_OPTIONS = [
     "saved",
@@ -60,18 +62,29 @@ DEFAULT_ANSWERS = {
     ]
 }
 
-DEFAULT_COVER_LETTER_TEMPLATE = """Dear {company} hiring team,
+DEFAULT_COVER_LETTER_TEMPLATE = r"""\documentclass[11pt]{letter}
+\usepackage[margin=1in]{{geometry}}
+\usepackage[T1]{{fontenc}}
+\usepackage{{lmodern}}
+\signature{{{full_name}}}
+\address{{{full_name} \\ {location} \\ {email} \\ {phone}}}
+\date{{{today}}}
 
-I’m excited to apply for the {title} role in {location}. My background aligns well with the work you’re doing, especially across {top_skills}.
+\begin{{document}}
+
+\begin{{letter}}{{{company} Hiring Team \\ {location}}}
+\opening{{Dear {company} Hiring Team,}}
+
+I am excited to apply for the {title} role at {company}. My background aligns well with the work your team is doing, especially across {top_skills}.
 
 {summary}
 
-I’d welcome the chance to contribute and would be glad to discuss how I can help {company}.
+I would welcome the opportunity to contribute to {company} and discuss how I can add value to the team.
 
-Best,
-{full_name}
-{email}
-{phone}
+\closing{{Sincerely,}}
+\end{{letter}}
+
+\end{{document}}
 """
 
 TEMPLATE_FIELDS = [
@@ -93,4 +106,3 @@ def default_profile() -> dict[str, str]:
 
 def default_answers() -> dict[str, list[dict[str, object]]]:
     return deepcopy(DEFAULT_ANSWERS)
-

@@ -1,10 +1,10 @@
 # Jobmaster
 
-Jobmaster is a local-first job application copilot for your own search. It keeps your resume, recruiter-answer bank, and cover letter template in one place, tracks every application in SQLite, and can optionally autofill supported application forms in a real browser.
+Jobmaster is a local-first job application copilot for your own search. It keeps your resume, recruiter-answer bank, and LaTeX cover letter template in one place, tracks every application in SQLite, and can optionally autofill supported application forms in a real browser.
 
 ## What it does
 
-- Stores your candidate profile, resume path, recruiter answers, and cover letter template locally.
+- Stores your candidate profile, recruiter answers, uploaded resume, and LaTeX cover letter template locally.
 - Tracks jobs, statuses, notes, URLs, generated cover letters, and application activity.
 - Exports your tracker to CSV.
 - Launches a browser autofill run that uses your stored answers to populate common application fields.
@@ -26,6 +26,7 @@ python3 -m jobmaster serve
 3. Open `http://127.0.0.1:8765`, then fill in:
 
 - your profile
+- your resume
 - your recruiter-answer bank
 - your cover letter template
 - your job leads
@@ -47,9 +48,18 @@ python3 -m jobmaster autofill --job 1
 
 By default the browser opens in headed mode, gives you time to log in, and fills fields for review. Add `--submit` if you want Jobmaster to attempt the final submit click after filling.
 
+## Resume handling
+
+The Settings page gives you two ways to add your resume:
+
+- upload the file into `data/uploads/`
+- point Jobmaster at an existing local path
+
+Autofill uses the saved `resume_path` automatically for file-upload fields.
+
 ## Cover letter placeholders
 
-The cover letter template uses Python-style placeholders. These are the most useful ones:
+The cover letter template is stored as LaTeX and uses Python-style placeholders. These are the most useful ones:
 
 - `{company}`
 - `{title}`
@@ -91,5 +101,5 @@ The dashboard lets you edit the answer bank as JSON. Each answer can include ali
 
 - The autofill engine is generic and works best on straightforward forms such as Greenhouse, Lever, and standard HTML applications.
 - Some sites, especially heavily scripted Workday flows, may need more site-specific tuning.
+- Generated cover letters are written as `.tex` files in `data/generated/`.
 - Your private data stays local unless you choose to sync or commit it elsewhere.
-

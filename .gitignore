@@ -6,7 +6,8 @@ data/jobmaster.db
 data/profile.json
 data/answers.json
 data/cover_letter_template.txt
+data/cover_letter_template.tex
 data/generated/
+data/uploads/
 data/*.csv
 data/*.pdf
-
