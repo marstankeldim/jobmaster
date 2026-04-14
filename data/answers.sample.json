@@ -1,0 +1,20 @@
+{
+  "answers": [
+    {
+      "question": "Are you legally authorized to work in the United States?",
+      "answer": "Yes",
+      "aliases": ["authorized to work", "work authorization", "eligible to work"]
+    },
+    {
+      "question": "Will you now or in the future require visa sponsorship?",
+      "answer": "No",
+      "aliases": ["sponsorship", "visa sponsorship", "require sponsorship"]
+    },
+    {
+      "question": "What is your preferred work arrangement?",
+      "answer": "Remote or hybrid",
+      "aliases": ["onsite", "remote", "hybrid", "work arrangement"]
+    }
+  ]
+}
+

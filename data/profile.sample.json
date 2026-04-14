@@ -1,0 +1,18 @@
+{
+  "full_name": "Your Name",
+  "email": "you@example.com",
+  "phone": "555-555-5555",
+  "location": "State College, PA",
+  "linkedin": "https://www.linkedin.com/in/your-name",
+  "github": "https://github.com/your-name",
+  "portfolio": "https://your-site.dev",
+  "resume_path": "data/resume.pdf",
+  "summary": "Replace this with a concise professional summary that fits most applications.",
+  "top_skills": "Python, automation, backend engineering, APIs",
+  "work_authorization": "Yes",
+  "sponsorship_needed": "No",
+  "salary_expectation": "",
+  "available_start_date": "Two weeks after offer",
+  "preferred_workplace": "Remote or hybrid"
+}
+
