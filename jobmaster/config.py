@@ -9,6 +9,7 @@ DATA_DIR = ROOT_DIR / "data"
 DB_PATH = DATA_DIR / "jobmaster.db"
 PROFILE_PATH = DATA_DIR / "profile.json"
 ANSWERS_PATH = DATA_DIR / "answers.json"
+CANDIDATE_SOURCES_PATH = DATA_DIR / "candidate_sources.json"
 COVER_LETTER_TEMPLATE_PATH = DATA_DIR / "cover_letter_template.tex"
 LEGACY_COVER_LETTER_TEMPLATE_PATH = DATA_DIR / "cover_letter_template.txt"
 GENERATED_DIR = DATA_DIR / "generated"
@@ -62,6 +63,46 @@ DEFAULT_ANSWERS = {
     ]
 }
 
+DEFAULT_CANDIDATE_SOURCES = {
+    "resume": {
+        "path": "data/uploads/resume.pdf",
+        "extracted_text": "",
+        "notes": "",
+    },
+    "linkedin": {
+        "url": "",
+        "headline": "",
+        "location": "",
+        "status": "",
+        "notes": "",
+    },
+    "github": {
+        "url": "",
+        "display_name": "",
+        "username": "",
+        "bio": "",
+        "location": "",
+        "orcid": "",
+        "repository_count": 0,
+        "starred_count": 0,
+        "repositories": [],
+    },
+    "education": {
+        "school": "",
+        "degree": "",
+        "graduation": "",
+        "notes": "",
+    },
+    "experience_highlights": [],
+    "project_highlights": [],
+    "preferences": {
+        "target_roles": "",
+        "industries": "",
+        "work_modes": "",
+    },
+    "extra_context": "",
+}
+
 DEFAULT_COVER_LETTER_TEMPLATE = r"""\documentclass[11pt]{letter}
 \usepackage[margin=1in]{{geometry}}
 \usepackage[T1]{{fontenc}}
@@ -106,3 +147,7 @@ def default_profile() -> dict[str, str]:
 
 def default_answers() -> dict[str, list[dict[str, object]]]:
     return deepcopy(DEFAULT_ANSWERS)
+
+
+def default_candidate_sources() -> dict[str, object]:
+    return deepcopy(DEFAULT_CANDIDATE_SOURCES)

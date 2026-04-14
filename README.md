@@ -1,13 +1,14 @@
 # Jobmaster
 
-Jobmaster is a local-first job application copilot for your own search. It keeps your resume, recruiter-answer bank, and LaTeX cover letter template in one place, tracks every application in SQLite, and can optionally autofill supported application forms in a real browser.
+Jobmaster is a local-first job application copilot for your own search. It keeps your resume, recruiter-answer bank, candidate-source data, and LaTeX cover letter template in one place, tracks every application in SQLite, and can optionally autofill supported application forms in a real browser.
 
 ## What it does
 
-- Stores your candidate profile, recruiter answers, uploaded resume, and LaTeX cover letter template locally.
+- Stores your candidate profile, recruiter answers, uploaded resume, candidate-source data, and LaTeX cover letter template locally.
 - Tracks jobs, statuses, notes, URLs, generated cover letters, and application activity.
 - Exports your tracker to CSV.
 - Launches a browser autofill run that uses your stored answers to populate common application fields.
+- Generates a professional summary from the profile and stored candidate evidence.
 
 ## Quick start
 
@@ -28,6 +29,7 @@ python3 -m jobmaster serve
 - your profile
 - your resume
 - your recruiter-answer bank
+- your candidate source data
 - your cover letter template
 - your job leads
 
@@ -56,6 +58,19 @@ The Settings page gives you two ways to add your resume:
 - point Jobmaster at an existing local path
 
 Autofill uses the saved `resume_path` automatically for file-upload fields.
+
+## Candidate source data
+
+The Settings page includes a JSON editor for structured candidate context such as:
+
+- resume notes or extracted text
+- GitHub profile signals and repositories
+- LinkedIn notes or headline
+- education details
+- project and experience highlights
+- extra recruiter-facing context
+
+You can generate the professional summary from this combined data directly in the dashboard.
 
 ## Cover letter placeholders
 
@@ -94,6 +109,7 @@ The dashboard lets you edit the answer bank as JSON. Each answer can include ali
 - `python3 -m jobmaster init`
 - `python3 -m jobmaster serve --host 127.0.0.1 --port 8765`
 - `python3 -m jobmaster export --output data/applications.csv`
+- `python3 -m jobmaster generate-summary`
 - `python3 -m jobmaster generate-cover-letter --job 1`
 - `python3 -m jobmaster autofill --job 1`
 

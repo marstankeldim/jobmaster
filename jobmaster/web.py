@@ -28,13 +28,16 @@ from .db import (
 from .storage import (
     ensure_user_files,
     load_answers,
+    load_candidate_sources,
     load_cover_letter_template,
     load_profile,
     save_answers,
+    save_candidate_sources,
     save_cover_letter_template,
     save_profile,
     save_resume_upload,
 )
+from .summary import generate_professional_summary
 
 
 STATIC_CSS = Path(__file__).with_name("static").joinpath("styles.css").read_text(encoding="utf-8")
@@ -271,6 +274,7 @@ def jobs_page() -> bytes:
 def settings_page(notice: str = "") -> bytes:
     profile = load_profile()
     answers = load_answers()
+    candidate_sources = load_candidate_sources()
     template = load_cover_letter_template()
     template_help = ", ".join(TEMPLATE_FIELDS)
     resume_path = str(profile.get("resume_path", "")).strip()
@@ -324,6 +328,21 @@ def settings_page(notice: str = "") -> bytes:
         <form method="post" action="/settings/answers" class="stack">
           <label class="wide">Answer bank<textarea name="answers_json" rows="16">{escape(json.dumps(answers, indent=2))}</textarea></label>
           <button class="primary" type="submit">Save answers</button>
+        </form>
+      </section>
+      <section class="card stack wide">
+        <div class="section-head">
+          <h2>Candidate source data</h2>
+          <p>Store anything helpful: resume notes, GitHub signals, LinkedIn data, education, project highlights, and recruiter-facing context.</p>
+        </div>
+        <form method="post" action="/settings/candidate-sources" class="stack">
+          <label class="wide">Candidate context JSON<textarea name="candidate_sources_json" rows="22">{escape(json.dumps(candidate_sources, indent=2))}</textarea></label>
+          <div class="button-row">
+            <button class="primary" type="submit">Save source data</button>
+          </div>
+        </form>
+        <form method="post" action="/settings/generate-summary" class="stack">
+          <button class="primary" type="submit">Generate professional summary</button>
         </form>
       </section>
       <section class="card stack wide">
@@ -468,6 +487,20 @@ def app(environ: dict[str, Any], start_response: Any) -> list[bytes]:
             return response(start_response, "200 OK", settings_page(notice="Answer bank saved."))
         except json.JSONDecodeError:
             return response(start_response, "200 OK", settings_page(notice="Answer bank JSON is invalid."))
+    if method == "POST" and path == "/settings/candidate-sources":
+        payload, _ = parse_request(environ)
+        try:
+            parsed = json.loads(payload.get("candidate_sources_json", "{}"))
+            save_candidate_sources(parsed)
+            return response(start_response, "200 OK", settings_page(notice="Candidate source data saved."))
+        except json.JSONDecodeError:
+            return response(start_response, "200 OK", settings_page(notice="Candidate source JSON is invalid."))
+    if method == "POST" and path == "/settings/generate-summary":
+        profile = load_profile()
+        summary = generate_professional_summary(profile, load_candidate_sources())
+        profile["summary"] = summary
+        save_profile(profile)
+        return response(start_response, "200 OK", settings_page(notice="Professional summary regenerated from candidate source data."))
     if method == "POST" and path == "/settings/template":
         payload, _ = parse_request(environ)
         save_cover_letter_template(payload.get("template", ""))

@@ -6,6 +6,7 @@ from typing import Any
 
 from .config import (
     ANSWERS_PATH,
+    CANDIDATE_SOURCES_PATH,
     COVER_LETTER_TEMPLATE_PATH,
     DATA_DIR,
     DEFAULT_COVER_LETTER_TEMPLATE,
@@ -13,6 +14,7 @@ from .config import (
     PROFILE_PATH,
     UPLOADS_DIR,
     default_answers,
+    default_candidate_sources,
     default_profile,
 )
 
@@ -53,6 +55,7 @@ def ensure_user_files(
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     _write_json_if_missing(profile_path, default_profile())
     _write_json_if_missing(answers_path, default_answers())
+    _write_json_if_missing(CANDIDATE_SOURCES_PATH, default_candidate_sources())
     if not template_path.exists() and LEGACY_COVER_LETTER_TEMPLATE_PATH.exists():
         template_path.write_text(
             _coerce_template_to_latex(LEGACY_COVER_LETTER_TEMPLATE_PATH.read_text(encoding="utf-8")).rstrip() + "\n",
@@ -88,6 +91,14 @@ def load_answers(path: Path = ANSWERS_PATH) -> dict[str, Any]:
 
 
 def save_answers(payload: dict[str, Any], path: Path = ANSWERS_PATH) -> None:
+    save_json(path, payload)
+
+
+def load_candidate_sources(path: Path = CANDIDATE_SOURCES_PATH) -> dict[str, Any]:
+    return load_json(path, default_candidate_sources())
+
+
+def save_candidate_sources(payload: dict[str, Any], path: Path = CANDIDATE_SOURCES_PATH) -> None:
     save_json(path, payload)
 
 

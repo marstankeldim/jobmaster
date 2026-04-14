@@ -1,6 +1,7 @@
 import unittest
 
 from jobmaster.cover_letters import latex_to_text, render_cover_letter
+from jobmaster.summary import generate_professional_summary
 
 
 class CoverLetterTests(unittest.TestCase):
@@ -40,6 +41,23 @@ I am applying for the role.
         )
         self.assertIn(r"\begin{letter}{Acme Hiring Team \\ Remote}", rendered)
         self.assertIn(r"\signature{Ayan}", rendered)
+
+    def test_summary_generation_uses_candidate_source_data(self) -> None:
+        profile = {"top_skills": "Python, automation, APIs"}
+        candidate_sources = {
+            "github": {
+                "bio": "Electrical Engineering @ Penn State | Robotics (ROS), Controls, Embedded | Seeking EE/Robotics Internships",
+                "repository_count": 5,
+                "repositories": [{"description": "tailored applications to jobs with custom cv and your resume", "language": "Python"}],
+            },
+            "preferences": {"target_roles": "robotics, controls, embedded, and automation internships", "industries": ""},
+            "education": {},
+            "project_highlights": [],
+        }
+        summary = generate_professional_summary(profile, candidate_sources)
+        self.assertIn("Penn State electrical engineering student", summary)
+        self.assertIn("robotics", summary.lower())
+        self.assertIn("automation", summary.lower())
 
 
 if __name__ == "__main__":

@@ -7,7 +7,15 @@ from wsgiref.simple_server import make_server
 from .autofill import run_autofill
 from .cover_letters import latex_to_text, render_cover_letter
 from .db import export_jobs_csv, get_job, init_db, log_event, save_generated_cover_letter, write_generated_letter
-from .storage import ensure_user_files, load_answers, load_cover_letter_template, load_profile
+from .storage import (
+    ensure_user_files,
+    load_answers,
+    load_candidate_sources,
+    load_cover_letter_template,
+    load_profile,
+    save_profile,
+)
+from .summary import generate_professional_summary
 from .web import app
 
 
@@ -43,6 +51,16 @@ def command_generate_cover_letter(job_id: int) -> None:
     output = write_generated_letter(job_id, rendered)
     print(rendered)
     print(f"\nSaved to {output}")
+
+
+def command_generate_summary() -> None:
+    ensure_user_files()
+    init_db()
+    profile = load_profile()
+    summary = generate_professional_summary(profile, load_candidate_sources())
+    profile["summary"] = summary
+    save_profile(profile)
+    print(summary)
 
 
 def command_autofill(job_id: int, url: str | None, headless: bool, submit: bool) -> None:
@@ -94,6 +112,8 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser = subparsers.add_parser("export", help="Export tracked applications to CSV.")
     export_parser.add_argument("--output", default="data/applications.csv", type=Path)
 
+    subparsers.add_parser("generate-summary", help="Generate and save the professional summary from stored source data.")
+
     cover_parser = subparsers.add_parser("generate-cover-letter", help="Render a cover letter for a tracked job.")
     cover_parser.add_argument("--job", required=True, type=int)
 
@@ -116,6 +136,8 @@ def main() -> None:
         serve(args.host, args.port)
     elif args.command == "export":
         command_export(args.output)
+    elif args.command == "generate-summary":
+        command_generate_summary()
     elif args.command == "generate-cover-letter":
         command_generate_cover_letter(args.job)
     elif args.command == "autofill":

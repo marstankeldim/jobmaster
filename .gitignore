@@ -5,6 +5,7 @@ __pycache__/
 data/jobmaster.db
 data/profile.json
 data/answers.json
+data/candidate_sources.json
 data/cover_letter_template.txt
 data/cover_letter_template.tex
 data/generated/

@@ -1,0 +1,40 @@
+{
+  "resume": {
+    "path": "data/uploads/resume.pdf",
+    "extracted_text": "",
+    "notes": "Paste structured bullets from your resume here if you want the summary generator to use them."
+  },
+  "linkedin": {
+    "url": "https://www.linkedin.com/in/your-name",
+    "headline": "",
+    "location": "",
+    "status": "",
+    "notes": ""
+  },
+  "github": {
+    "url": "https://github.com/your-name",
+    "display_name": "",
+    "username": "",
+    "bio": "",
+    "location": "",
+    "orcid": "",
+    "repository_count": 0,
+    "starred_count": 0,
+    "repositories": []
+  },
+  "education": {
+    "school": "",
+    "degree": "",
+    "graduation": "",
+    "notes": ""
+  },
+  "experience_highlights": [],
+  "project_highlights": [],
+  "preferences": {
+    "target_roles": "",
+    "industries": "",
+    "work_modes": ""
+  },
+  "extra_context": ""
+}
+
