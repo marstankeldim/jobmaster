@@ -68,18 +68,41 @@
   function profileAnswerMap(profile, coverLetter) {
     return [
       [/full.?name|your name|applicant name|legal name/, profile.full_name],
+      [/preferred name|nickname/, profile.preferred_name || profile.full_name],
       [/email|e-mail/, profile.email],
       [/phone|mobile|cell/, profile.phone],
-      [/city|state|location|address/, profile.location],
+      [/address line 1|street address|address/, profile.address_line_1 || profile.location],
+      [/address line 2|apartment|suite|unit/, profile.address_line_2],
+      [/city/, profile.city || profile.location],
+      [/state|province|region/, profile.state_region],
+      [/zip|postal code/, profile.postal_code],
+      [/country/, profile.country],
+      [/city state|location/, profile.location],
       [/linkedin/, profile.linkedin],
       [/github/, profile.github],
-      [/portfolio|website|personal site/, profile.portfolio || profile.github],
+      [/portfolio|website|personal site/, profile.portfolio || profile.personal_website || profile.github],
       [/resume|cv/, profile.resume_path],
       [/work authorization|authorized to work|eligible to work/, profile.work_authorization],
       [/sponsorship|visa/, profile.sponsorship_needed],
+      [/relocation|willing to relocate/, profile.requires_relocation],
+      [/citizenship|citizen/, profile.citizenship],
+      [/clearance|security clearance/, profile.security_clearance],
+      [/notice period/, profile.notice_period],
+      [/current title|job title|present title/, profile.current_title],
+      [/current company|employer/, profile.current_company],
+      [/years of experience|experience in years/, profile.years_experience],
+      [/degree|highest degree|education level/, profile.highest_degree],
+      [/school|university|college/, profile.school],
+      [/graduation|grad date/, profile.graduation_date],
       [/salary|compensation|pay expectation/, profile.salary_expectation],
       [/start date|available to start|notice period|availability/, profile.available_start_date],
       [/remote|hybrid|onsite|work arrangement/, profile.preferred_workplace],
+      [/language|languages spoken/, profile.languages_spoken],
+      [/pronouns/, profile.pronouns],
+      [/gender/, profile.gender],
+      [/veteran/, profile.veteran_status],
+      [/disability/, profile.disability_status],
+      [/ethnicity|race/, profile.race_ethnicity],
       [/summary|about you|about yourself/, profile.summary],
       [/skills|tech stack|strengths/, profile.top_skills],
       [/cover letter/, coverLetter]
@@ -179,8 +202,35 @@
   }
 
   function dispatchInputEvents(element) {
-    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new InputEvent("input", { bubbles: true, data: "", inputType: "insertText" }));
     element.dispatchEvent(new Event("change", { bubbles: true }));
+    element.dispatchEvent(new Event("blur", { bubbles: true }));
+  }
+
+  function setNativeValue(element, value) {
+    const prototype =
+      element instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : element instanceof HTMLSelectElement
+          ? HTMLSelectElement.prototype
+          : HTMLInputElement.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+    if (descriptor?.set) {
+      descriptor.set.call(element, value);
+    } else {
+      element.value = value;
+    }
+    dispatchInputEvents(element);
+  }
+
+  function setChecked(element, checked) {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked");
+    if (descriptor?.set) {
+      descriptor.set.call(element, checked);
+    } else {
+      element.checked = checked;
+    }
+    dispatchInputEvents(element);
   }
 
   async function setResumeFile(input, resumeAsset) {
@@ -254,8 +304,7 @@
             skipped.push(`${label} (no select match)`);
             continue;
           }
-          field.element.value = option;
-          dispatchInputEvents(field.element);
+          setNativeValue(field.element, option);
           filled.push(`${label} <- ${candidate.reason}`);
           continue;
         }
@@ -263,8 +312,7 @@
         if (field.type === "checkbox") {
           const normalizedAnswer = normalize(candidate.answer);
           if (YES_WORDS.has(normalizedAnswer)) {
-            field.element.checked = true;
-            dispatchInputEvents(field.element);
+            setChecked(field.element, true);
             filled.push(`${label} <- checked`);
           } else if (NO_WORDS.has(normalizedAnswer)) {
             skipped.push(`${label} (left unchecked)`);
@@ -283,8 +331,7 @@
             normalizedAnswer.includes(radioValue) ||
             radioLabel.includes(normalizedAnswer)
           ) {
-            field.element.checked = true;
-            dispatchInputEvents(field.element);
+            setChecked(field.element, true);
             filled.push(`${label} <- ${candidate.reason}`);
           } else {
             skipped.push(`${label} (radio mismatch)`);
@@ -293,8 +340,7 @@
         }
 
         field.element.focus();
-        field.element.value = candidate.answer;
-        dispatchInputEvents(field.element);
+        setNativeValue(field.element, candidate.answer);
         filled.push(`${label} <- ${candidate.reason}`);
       } catch (error) {
         skipped.push(`${label} (${error instanceof Error ? error.message : String(error)})`);
@@ -310,4 +356,3 @@
     runAutofill
   };
 })(globalThis);
-

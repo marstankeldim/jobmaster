@@ -4,6 +4,7 @@ import {
   DEFAULT_CANDIDATE_SOURCES,
   DEFAULT_COVER_LETTER_TEMPLATE,
   DEFAULT_PROFILE,
+  LEGACY_PROFILE_EXAMPLE_VALUES,
   STATUS_OPTIONS,
   STORAGE_KEYS
 } from "./defaults.js";
@@ -49,6 +50,16 @@ function sortByUpdatedAt(items) {
     const leftValue = left.updated_at ?? left.created_at ?? "";
     return rightValue.localeCompare(leftValue);
   });
+}
+
+function stripLegacyExampleValues(profile) {
+  const next = { ...profile };
+  for (const [key, exampleValue] of Object.entries(LEGACY_PROFILE_EXAMPLE_VALUES)) {
+    if (next[key] === exampleValue) {
+      next[key] = "";
+    }
+  }
+  return next;
 }
 
 function openDb() {
@@ -125,7 +136,7 @@ export async function getState() {
   await ensureDefaults();
   const current = await chrome.storage.local.get(Object.values(STORAGE_KEYS));
   return {
-    profile: mergeObjects(DEFAULT_PROFILE, current[STORAGE_KEYS.profile] ?? {}),
+    profile: stripLegacyExampleValues(mergeObjects(DEFAULT_PROFILE, current[STORAGE_KEYS.profile] ?? {})),
     answers: mergeObjects(DEFAULT_ANSWERS, current[STORAGE_KEYS.answers] ?? {}),
     candidateSources: mergeObjects(DEFAULT_CANDIDATE_SOURCES, current[STORAGE_KEYS.candidateSources] ?? {}),
     coverLetterTemplate: current[STORAGE_KEYS.coverLetterTemplate] ?? DEFAULT_COVER_LETTER_TEMPLATE,

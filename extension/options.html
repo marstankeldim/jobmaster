@@ -31,17 +31,41 @@
         </div>
         <form id="profile-form" class="jm-form-grid">
           <label>Full name<input name="full_name" type="text"></label>
+          <label>Preferred name<input name="preferred_name" type="text"></label>
           <label>Email<input name="email" type="email"></label>
           <label>Phone<input name="phone" type="text"></label>
           <label>Location<input name="location" type="text"></label>
+          <label>Address line 1<input name="address_line_1" type="text"></label>
+          <label>Address line 2<input name="address_line_2" type="text"></label>
+          <label>City<input name="city" type="text"></label>
+          <label>State / region<input name="state_region" type="text"></label>
+          <label>Postal code<input name="postal_code" type="text"></label>
+          <label>Country<input name="country" type="text"></label>
           <label>LinkedIn<input name="linkedin" type="url"></label>
           <label>GitHub<input name="github" type="url"></label>
           <label>Portfolio<input name="portfolio" type="url"></label>
+          <label>Personal website<input name="personal_website" type="url"></label>
+          <label>Current title<input name="current_title" type="text"></label>
+          <label>Current company / school<input name="current_company" type="text"></label>
+          <label>Years of experience<input name="years_experience" type="text"></label>
+          <label>Highest degree<input name="highest_degree" type="text"></label>
+          <label>School<input name="school" type="text"></label>
+          <label>Graduation date<input name="graduation_date" type="text"></label>
           <label>Work authorization<input name="work_authorization" type="text"></label>
           <label>Sponsorship needed<input name="sponsorship_needed" type="text"></label>
+          <label>Open to relocation<input name="requires_relocation" type="text"></label>
+          <label>Citizenship<input name="citizenship" type="text"></label>
+          <label>Security clearance<input name="security_clearance" type="text"></label>
+          <label>Notice period<input name="notice_period" type="text"></label>
           <label>Salary expectation<input name="salary_expectation" type="text"></label>
           <label>Available start date<input name="available_start_date" type="text"></label>
           <label>Preferred workplace<input name="preferred_workplace" type="text"></label>
+          <label>Languages spoken<input name="languages_spoken" type="text"></label>
+          <label>Pronouns<input name="pronouns" type="text"></label>
+          <label>Gender<input name="gender" type="text"></label>
+          <label>Veteran status<input name="veteran_status" type="text"></label>
+          <label>Disability status<input name="disability_status" type="text"></label>
+          <label>Race / ethnicity<input name="race_ethnicity" type="text"></label>
           <label class="jm-span-2">Top skills<input name="top_skills" type="text"></label>
           <label class="jm-span-2">Professional summary<textarea name="summary" rows="6"></textarea></label>
           <div class="jm-button-row jm-span-2">
@@ -69,7 +93,7 @@
       <article class="jm-card">
         <div class="jm-card-head">
           <h2>Recruiter Answers</h2>
-          <p>JSON answer bank for common application questions.</p>
+          <p>Fallback JSON answer bank for questions not covered by the profile fields.</p>
         </div>
         <form id="answers-form" class="jm-stack">
           <textarea id="answers-json" rows="16" spellcheck="false"></textarea>
@@ -113,4 +137,3 @@
   <script type="module" src="src/options/options.js"></script>
 </body>
 </html>
-

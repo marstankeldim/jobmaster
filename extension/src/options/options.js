@@ -1,18 +1,43 @@
 import { callExtension } from "../shared/client.js";
+import { PROFILE_PLACEHOLDERS } from "../shared/defaults.js";
 
 const profileFields = [
   "full_name",
+  "preferred_name",
   "email",
   "phone",
   "location",
+  "address_line_1",
+  "address_line_2",
+  "city",
+  "state_region",
+  "postal_code",
+  "country",
   "linkedin",
   "github",
   "portfolio",
+  "personal_website",
+  "current_title",
+  "current_company",
+  "years_experience",
+  "highest_degree",
+  "school",
+  "graduation_date",
   "work_authorization",
   "sponsorship_needed",
+  "requires_relocation",
+  "citizenship",
+  "security_clearance",
+  "notice_period",
   "salary_expectation",
   "available_start_date",
   "preferred_workplace",
+  "languages_spoken",
+  "pronouns",
+  "gender",
+  "veteran_status",
+  "disability_status",
+  "race_ethnicity",
   "top_skills",
   "summary"
 ];
@@ -39,6 +64,7 @@ function populateProfile(profile) {
     const input = form.elements.namedItem(key);
     if (input) {
       input.value = profile[key] ?? "";
+      input.placeholder = PROFILE_PLACEHOLDERS[key] ?? "";
     }
   }
 }
@@ -202,4 +228,3 @@ document.getElementById("import-package").addEventListener("change", async (even
 refresh().catch((error) => {
   flash(error.message || "Could not load settings.", true);
 });
-
