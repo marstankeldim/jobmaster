@@ -78,6 +78,38 @@ function renderRecentScans(scans) {
   }
 }
 
+function renderAutofillReview(result = null) {
+  const container = document.getElementById("autofill-review");
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  if (!result) {
+    container.textContent = "Run autofill to see a field-by-field summary.";
+    return;
+  }
+
+  const sections = [
+    ["Filled", result.filled || []],
+    ["Needs Review", result.review || []],
+    ["Skipped", result.skipped || []]
+  ];
+
+  for (const [title, entries] of sections) {
+    const item = document.createElement("div");
+    item.className = "jm-job-list-item";
+    const preview = entries
+      .slice(0, 4)
+      .map((entry) => {
+        const reason = entry.reason || entry.skipReason || entry.fillMethod || "";
+        return `${entry.label}${reason ? ` — ${reason}` : ""}`;
+      })
+      .join("\n");
+    item.innerHTML = `<strong>${title}</strong><span>${entries.length} fields</span><span>${preview || "None"}</span>`;
+    container.append(item);
+  }
+}
+
 function setJobField(id, value) {
   document.getElementById(id).textContent = value || "—";
 }
@@ -95,9 +127,11 @@ function setScanMetrics(metrics = {}) {
     metrics.platform ? `platform: ${metrics.platform}` : "",
     metrics.rootSelectorUsed ? `root: ${metrics.rootSelectorUsed}` : "",
     metrics.stepSelectorUsed ? `step: ${metrics.stepSelectorUsed}` : "",
+    metrics.submissionState ? `state: ${metrics.submissionState}` : "",
     Number.isFinite(metrics.scanDurationMs) ? `scan: ${metrics.scanDurationMs}ms` : "",
     Number.isFinite(metrics.fieldCountVisible) ? `visible fields: ${metrics.fieldCountVisible}` : "",
     Number.isFinite(metrics.fieldCountMatched) ? `matched: ${metrics.fieldCountMatched}` : "",
+    Number.isFinite(metrics.fieldCountReview) ? `review: ${metrics.fieldCountReview}` : "",
     metrics.cacheHit ? "cached scan" : ""
   ]
     .filter(Boolean)
@@ -123,7 +157,7 @@ async function analyzeCurrentPage() {
     setJobField("job-company", currentJob.company);
     setJobField("job-title", currentJob.title);
     setJobField("job-location", currentJob.location);
-    document.getElementById("platform-label").textContent = `${lastAnalysis.platform} · ${lastAnalysis.applicationFormDetected ? "application form detected" : "metadata only"}`;
+    document.getElementById("platform-label").textContent = `${lastAnalysis.platform} · ${lastAnalysis.applicationFormDetected ? "application form detected" : "metadata only"}${lastAnalysis.submissionState ? ` · ${lastAnalysis.submissionState}` : ""}`;
     setScanMetrics(lastAnalysis.metrics || lastAnalysis);
     const findResponse = await callExtension("jobmaster:find-job-by-url", { jobUrl: tab.url || currentJob.job_url || "" });
     lastSavedJob = findResponse.ok ? findResponse.job : null;
@@ -140,7 +174,7 @@ async function analyzeCurrentPage() {
   setJobField("job-company", currentJob.company);
   setJobField("job-title", currentJob.title);
   setJobField("job-location", currentJob.location);
-  document.getElementById("platform-label").textContent = `${response.analysis.platform} · ${response.analysis.applicationFormDetected ? "application form detected" : "metadata only"}`;
+  document.getElementById("platform-label").textContent = `${response.analysis.platform} · ${response.analysis.applicationFormDetected ? "application form detected" : "metadata only"}${response.analysis.submissionState ? ` · ${response.analysis.submissionState}` : ""}`;
   setScanMetrics(response.analysis.metrics || response.analysis);
 
   const findResponse = await callExtension("jobmaster:find-job-by-url", { jobUrl: tab.url || currentJob.job_url || "" });
@@ -261,6 +295,7 @@ document.getElementById("autofill-page").addEventListener("click", async () => {
       throw new Error(response?.error || "Autofill failed.");
     }
     setScanMetrics(response.result.metrics);
+    renderAutofillReview(response.result);
     await callExtension("jobmaster:record-scan-run", {
       scanRun: {
         platform: response.result.metrics?.platform || lastAnalysis?.platform || "unknown",
@@ -268,12 +303,12 @@ document.getElementById("autofill-page").addEventListener("click", async () => {
         jobTitle: job.title || "",
         company: job.company || "",
         metrics: response.result.metrics || {},
-        skippedLabels: response.result.skipped.slice(0, 5),
-        classifiedPreview: (response.result.classified || []).slice(0, 5)
+        skippedLabels: (response.result.skipped || []).slice(0, 5).map((entry) => entry.label || entry),
+        classifiedPreview: (response.result.matches || []).slice(0, 5)
       }
     });
     await refreshRecentScans();
-    popupFlash(`Filled ${response.result.filled.length} fields and skipped ${response.result.skipped.length}.`);
+    popupFlash(`Filled ${response.result.filled.length} fields, flagged ${response.result.review.length} for review, skipped ${response.result.skipped.length}.`);
   } catch (error) {
     popupFlash(error.message || "Could not autofill page.", true);
   }
@@ -285,9 +320,11 @@ document.getElementById("autofill-page").addEventListener("click", async () => {
     await analyzeCurrentPage();
     await refreshRecentJobs();
     await refreshRecentScans();
+    renderAutofillReview(null);
   } catch (error) {
     popupFlash(error.message || "Page analysis unavailable.", true);
     await refreshRecentJobs();
     await refreshRecentScans();
+    renderAutofillReview(null);
   }
 })();

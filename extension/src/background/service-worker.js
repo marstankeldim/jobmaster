@@ -19,6 +19,7 @@ import {
   recentScanRuns,
   recentJobs,
   saveAnswers,
+  saveAutofillSettings,
   saveCandidateSources,
   saveCoverLetterTemplate,
   saveProfile,
@@ -77,6 +78,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
       case "jobmaster:save-candidate-sources":
         sendResponse({ ok: true, candidateSources: await saveCandidateSources(payload.candidateSources) });
+        break;
+
+      case "jobmaster:save-autofill-settings":
+        sendResponse({ ok: true, autofillSettings: await saveAutofillSettings(payload.autofillSettings) });
         break;
 
       case "jobmaster:save-cover-letter-template":
@@ -187,6 +192,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             profile: state.profile,
             answers: state.answers,
             candidateSources: state.candidateSources,
+            autofillSettings: state.autofillSettings,
             resumeMeta: state.resumeMeta,
             resumeAsset: await getResumeAsset(),
             coverLetterLatex: rendered,

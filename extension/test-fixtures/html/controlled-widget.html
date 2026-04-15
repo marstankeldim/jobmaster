@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<body>
+  <form>
+    <label for="controlled-email">Email</label>
+    <input id="controlled-email" type="email" autocomplete="email">
+    <script>
+      const input = document.getElementById("controlled-email");
+      input.addEventListener("input", () => {
+        input.dataset.lastInput = input.value;
+      });
+    </script>
+  </form>
+</body>
+</html>

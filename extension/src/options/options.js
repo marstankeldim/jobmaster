@@ -99,6 +99,14 @@ function populateResume(resumeMeta, profile) {
   }
 }
 
+function populateAutofillSettings(autofillSettings) {
+  document.getElementById("autofill-mode").value = autofillSettings.mode || "conservative";
+  document.getElementById("ai-fallback-enabled").checked = Boolean(autofillSettings.aiFallbackEnabled);
+  for (const input of document.querySelectorAll(".jm-platform-override")) {
+    input.checked = autofillSettings.platformOverrides?.[input.dataset.platform] !== false;
+  }
+}
+
 async function refresh() {
   const [stateResponse, countsResponse] = await Promise.all([
     callExtension("jobmaster:get-state"),
@@ -112,6 +120,7 @@ async function refresh() {
   document.getElementById("candidate-sources-json").value = JSON.stringify(stateResponse.state.candidateSources, null, 2);
   document.getElementById("cover-letter-template").value = stateResponse.state.coverLetterTemplate;
   populateResume(stateResponse.state.resumeMeta, stateResponse.state.profile);
+  populateAutofillSettings(stateResponse.state.autofillSettings);
   populateTrackerSummary(countsResponse.counts ?? {});
 }
 
@@ -141,6 +150,22 @@ document.getElementById("answers-form").addEventListener("submit", async (event)
     flash(response.ok ? "Answer bank saved." : response.error, !response.ok);
   } catch (error) {
     flash(error.message || "Answers JSON is invalid.", true);
+  }
+});
+
+document.getElementById("autofill-settings-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const autofillSettings = {
+    mode: document.getElementById("autofill-mode").value,
+    aiFallbackEnabled: document.getElementById("ai-fallback-enabled").checked,
+    platformOverrides: Object.fromEntries(
+      [...document.querySelectorAll(".jm-platform-override")].map((input) => [input.dataset.platform, input.checked])
+    )
+  };
+  const response = await callExtension("jobmaster:save-autofill-settings", { autofillSettings });
+  flash(response.ok ? "Autofill settings saved." : response.error, !response.ok);
+  if (response.ok) {
+    populateAutofillSettings(response.autofillSettings);
   }
 });
 

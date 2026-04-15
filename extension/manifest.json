@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jobmaster",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Track jobs, manage candidate data, generate materials, and autofill applications.",
   "permissions": [
     "storage",
@@ -32,6 +32,7 @@
       ],
       "js": [
         "src/content/platforms.js",
+        "src/content/autofill-core.js",
         "src/content/autofill.js",
         "src/content/main.js"
       ],

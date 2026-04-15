@@ -93,11 +93,36 @@
       <article class="jm-card">
         <div class="jm-card-head">
           <h2>Recruiter Answers</h2>
-          <p>Fallback JSON answer bank for questions not covered by the profile fields.</p>
+          <p>Fallback JSON answer bank for questions not covered by structured profile fields. Entries support `question`, `aliases`, `answerType`, `answer`, `aiHint`, and `platformHints`.</p>
         </div>
         <form id="answers-form" class="jm-stack">
           <textarea id="answers-json" rows="16" spellcheck="false"></textarea>
           <button type="submit" class="jm-button">Save Answer Bank</button>
+        </form>
+      </article>
+
+      <article class="jm-card">
+        <div class="jm-card-head">
+          <h2>Autofill Settings</h2>
+          <p>Control confidence thresholds, optional AI fallback plumbing, and per-platform adapter enablement.</p>
+        </div>
+        <form id="autofill-settings-form" class="jm-stack">
+          <label>Autofill mode
+            <select id="autofill-mode" name="mode">
+              <option value="conservative">Conservative</option>
+              <option value="balanced">Balanced</option>
+              <option value="aggressive">Aggressive</option>
+            </select>
+          </label>
+          <label><input id="ai-fallback-enabled" name="aiFallbackEnabled" type="checkbox"> Enable AI fallback plumbing for unresolved long-form questions</label>
+          <div class="jm-stack">
+            <label><input class="jm-platform-override" data-platform="workday" type="checkbox"> Enable Workday adapter</label>
+            <label><input class="jm-platform-override" data-platform="linkedin" type="checkbox"> Enable LinkedIn adapter</label>
+            <label><input class="jm-platform-override" data-platform="greenhouse" type="checkbox"> Enable Greenhouse adapter</label>
+            <label><input class="jm-platform-override" data-platform="lever" type="checkbox"> Enable Lever adapter</label>
+            <label><input class="jm-platform-override" data-platform="generic" type="checkbox"> Enable generic fallback adapter</label>
+          </div>
+          <button type="submit" class="jm-button">Save Autofill Settings</button>
         </form>
       </article>
 

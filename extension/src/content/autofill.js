@@ -1,76 +1,30 @@
 (function attachAutofill(globalScope) {
-  const YES_WORDS = new Set(["yes", "true", "1"]);
-  const NO_WORDS = new Set(["no", "false", "0"]);
-  const SCAN_OBSERVER_ATTRIBUTE_FILTER = ["class", "style", "hidden", "aria-hidden", "disabled"];
-  const FIELD_TAXONOMY_RULES = [
-    { key: "full_name", pattern: /full.?name|your name|applicant name|legal name/ },
-    { key: "preferred_name", pattern: /preferred name|nickname/ },
-    { key: "email", pattern: /email|e-mail/ },
-    { key: "phone", pattern: /phone|mobile|cell/ },
-    { key: "address_line_1", pattern: /address line 1|street address|mailing address/ },
-    { key: "address_line_2", pattern: /address line 2|apartment|suite|unit/ },
-    { key: "city", pattern: /\bcity\b/ },
-    { key: "state_region", pattern: /state|province|region/ },
-    { key: "postal_code", pattern: /zip|postal code/ },
-    { key: "country", pattern: /country/ },
-    { key: "location", pattern: /city state|location/ },
-    { key: "linkedin", pattern: /linkedin/ },
-    { key: "github", pattern: /github/ },
-    { key: "website", pattern: /portfolio|website|personal site/ },
-    { key: "resume", pattern: /resume|cv/ },
-    { key: "work_authorization", pattern: /work authorization|authorized to work|eligible to work/ },
-    { key: "sponsorship", pattern: /sponsorship|visa/ },
-    { key: "requires_relocation", pattern: /relocation|willing to relocate/ },
-    { key: "citizenship", pattern: /citizenship|citizen/ },
-    { key: "security_clearance", pattern: /clearance|security clearance/ },
-    { key: "notice_period", pattern: /notice period/ },
-    { key: "current_title", pattern: /current title|job title|present title/ },
-    { key: "current_company", pattern: /current company|employer/ },
-    { key: "years_experience", pattern: /years of experience|experience in years/ },
-    { key: "highest_degree", pattern: /degree|highest degree|education level/ },
-    { key: "school", pattern: /school|university|college/ },
-    { key: "graduation_date", pattern: /graduation|grad date/ },
-    { key: "salary_expectation", pattern: /salary|compensation|pay expectation/ },
-    { key: "available_start_date", pattern: /start date|available to start|availability/ },
-    { key: "preferred_workplace", pattern: /remote|hybrid|onsite|work arrangement/ },
-    { key: "languages_spoken", pattern: /language|languages spoken/ },
-    { key: "pronouns", pattern: /pronouns/ },
-    { key: "gender", pattern: /gender/ },
-    { key: "veteran_status", pattern: /veteran/ },
-    { key: "disability_status", pattern: /disability/ },
-    { key: "race_ethnicity", pattern: /ethnicity|race/ },
-    { key: "summary", pattern: /summary|about you|about yourself/ },
-    { key: "top_skills", pattern: /skills|tech stack|strengths/ },
-    { key: "cover_letter", pattern: /cover letter/ }
-  ];
+  const CORE = globalScope.JobmasterAutofillCore;
+  const BRIDGE_REQUEST_SOURCE = "jobmaster-bridge-request";
+  const BRIDGE_RESPONSE_SOURCE = "jobmaster-bridge-response";
+  const FIELD_ATTR = "data-jobmaster-field-id";
+  const SCAN_OBSERVER_ATTRIBUTE_FILTER = ["class", "style", "hidden", "aria-hidden", "disabled", "value", "checked"];
   const scanRuntime = {
     observedRoot: null,
     observer: null,
     mutationVersion: 0,
-    cachedScan: null
+    cachedScan: null,
+    markerCounter: 0,
+    bridgeCounter: 0,
+    bridgePending: new Map()
   };
 
-  function normalize(value) {
-    return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  }
-
   function cleanText(value) {
-    return String(value || "").replace(/\s+/g, " ").trim();
+    return CORE.cleanText(value);
   }
 
-  function toAnswerString(value) {
-    if (Array.isArray(value)) {
-      return cleanText(value.filter(Boolean).join(", "));
-    }
-    return cleanText(value);
+  function normalize(value) {
+    return CORE.normalize(value);
   }
 
-  function previewValue(value, maxLength = 72) {
-    const text = cleanText(value);
-    if (text.length <= maxLength) {
-      return text;
-    }
-    return `${text.slice(0, maxLength - 1)}…`;
+  function nextFieldId(prefix = "field") {
+    scanRuntime.markerCounter += 1;
+    return `jm-${prefix}-${scanRuntime.markerCounter}`;
   }
 
   function isPotentiallyRelevant(element) {
@@ -81,10 +35,7 @@
       return false;
     }
     const type = (element.getAttribute("type") || "").toLowerCase();
-    if (type === "hidden") {
-      return false;
-    }
-    return true;
+    return type !== "hidden";
   }
 
   function isVisible(element) {
@@ -93,10 +44,22 @@
     return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
   }
 
+  function readTextByIds(idList, root = document) {
+    return unique(
+      String(idList || "")
+        .split(/\s+/)
+        .map((id) => cleanText(root.getElementById?.(id)?.textContent || document.getElementById(id)?.textContent))
+    ).join(" | ");
+  }
+
+  function unique(values) {
+    return [...new Set(values.filter(Boolean))];
+  }
+
   function buildLabelIndex(root = document) {
     const index = new Map();
     for (const label of root.querySelectorAll("label")) {
-      const text = cleanText(label.innerText);
+      const text = cleanText(label.innerText || label.textContent);
       if (!text) {
         continue;
       }
@@ -106,344 +69,302 @@
         list.push(text);
         index.set(htmlFor, list);
       }
-      const nestedControl = label.querySelector("input, textarea, select");
-      if (nestedControl?.id) {
-        const list = index.get(nestedControl.id) || [];
+      for (const nestedControl of label.querySelectorAll("input, textarea, select")) {
+        const key = nestedControl.id || nestedControl.name;
+        if (!key) {
+          continue;
+        }
+        const list = index.get(key) || [];
         list.push(text);
-        index.set(nestedControl.id, list);
+        index.set(key, list);
       }
     }
     return index;
   }
 
-  function getFieldLabel(element, labelIndex) {
-    const chunks = [];
-    if (element.id && labelIndex.has(element.id)) {
-      chunks.push(...labelIndex.get(element.id));
+  function nearestHeadingText(element) {
+    let current = element;
+    while (current && current !== document.body) {
+      const labelled = cleanText(current.getAttribute?.("aria-label"));
+      if (labelled) {
+        return labelled;
+      }
+      const heading = current.querySelector?.("h1, h2, h3, h4, h5, h6");
+      if (heading) {
+        return cleanText(heading.textContent);
+      }
+      let sibling = current.previousElementSibling;
+      while (sibling) {
+        if (/^H[1-6]$/.test(sibling.tagName)) {
+          return cleanText(sibling.textContent);
+        }
+        sibling = sibling.previousElementSibling;
+      }
+      current = current.parentElement;
+    }
+    return "";
+  }
+
+  function sectionPathForElement(element) {
+    const parts = [];
+    const fieldset = element.closest("fieldset");
+    if (fieldset) {
+      parts.push(cleanText(fieldset.querySelector("legend")?.textContent));
+    }
+    const section = element.closest("section, article, [role='group'], [aria-labelledby]");
+    if (section) {
+      const ariaLabelled = readTextByIds(section.getAttribute("aria-labelledby"));
+      parts.push(ariaLabelled);
+      parts.push(cleanText(section.getAttribute("aria-label")));
+    }
+    parts.push(nearestHeadingText(element));
+    return unique(parts).join(" | ");
+  }
+
+  function accessibleNameForElement(element, labelIndex) {
+    const names = [];
+    const lookupKeys = [element.id, element.name].filter(Boolean);
+    for (const key of lookupKeys) {
+      if (labelIndex.has(key)) {
+        names.push(...labelIndex.get(key));
+      }
     }
     if (element.labels) {
       for (const label of element.labels) {
-        chunks.push(cleanText(label.innerText));
+        names.push(cleanText(label.innerText || label.textContent));
       }
     }
     const parentLabel = element.closest("label");
     if (parentLabel) {
-      chunks.push(cleanText(parentLabel.innerText));
+      names.push(cleanText(parentLabel.innerText || parentLabel.textContent));
     }
+    names.push(readTextByIds(element.getAttribute("aria-labelledby")));
+    names.push(cleanText(element.getAttribute("aria-label")));
+    names.push(cleanText(element.getAttribute("placeholder")));
     const fieldset = element.closest("fieldset");
     if (fieldset) {
-      const legend = fieldset.querySelector("legend");
-      if (legend) {
-        chunks.push(cleanText(legend.innerText));
-      }
+      names.push(cleanText(fieldset.querySelector("legend")?.textContent));
     }
-    return [...new Set(chunks.filter(Boolean))].join(" | ");
+    return unique(names).join(" | ");
   }
 
-  function profileTaxonomyAnswers(profile, coverLetter) {
+  function groupLabelForControls(controls) {
+    const labels = unique(
+      controls.flatMap((control) => [
+        cleanText(control.closest("label")?.innerText || control.closest("label")?.textContent),
+        cleanText(control.value),
+        cleanText(control.getAttribute("aria-label"))
+      ])
+    );
+    return labels.join(" | ");
+  }
+
+  function policyBucketForText(text) {
+    const normalized = normalize(text);
+    if (
+      normalized.includes("equal employment") ||
+      normalized.includes("self identify") ||
+      normalized.includes("voluntary") ||
+      normalized.includes("eeo")
+    ) {
+      return "eeo";
+    }
+    return "";
+  }
+
+  function markFieldControls(fieldId, controls) {
+    for (const control of controls) {
+      control.setAttribute(FIELD_ATTR, fieldId);
+    }
+  }
+
+  function optionListForField(element) {
+    if (element.tagName.toLowerCase() !== "select") {
+      return [];
+    }
+    return [...element.options].map((option) => ({
+      label: cleanText(option.label || option.textContent),
+      value: cleanText(option.value || option.textContent)
+    }));
+  }
+
+  function optionListForControls(controls, labelIndex) {
+    return controls.map((control) => ({
+      label:
+        cleanText(control.closest("label")?.innerText || control.closest("label")?.textContent) ||
+        accessibleNameForElement(control, labelIndex) ||
+        cleanText(control.value),
+      value: cleanText(control.value)
+    }));
+  }
+
+  function controlKind(element) {
+    const tag = element.tagName.toLowerCase();
+    const type = (element.getAttribute("type") || "").toLowerCase();
+    if (tag === "textarea") {
+      return "textarea";
+    }
+    if (type === "file") {
+      return "file";
+    }
+    if (type === "checkbox") {
+      return "checkbox";
+    }
+    if (type === "radio") {
+      return "radio";
+    }
+    if (tag === "select") {
+      return "select";
+    }
+    return "text";
+  }
+
+  function createResolvedField(base) {
+    const rawAutocomplete = cleanText(base.rawAutocomplete);
+    const parsedAutocomplete = CORE.parseAutocompleteAttribute(rawAutocomplete);
+    const signalText = cleanText(
+      [
+        base.accessibleName,
+        base.groupName,
+        base.sectionPath,
+        base.name,
+        base.id,
+        base.placeholder,
+        rawAutocomplete,
+        base.automationId,
+        ...(base.options || []).map((option) => option.label)
+      ].join(" | ")
+    );
     return {
-      full_name: profile.full_name,
-      preferred_name: profile.preferred_name || profile.full_name,
-      email: profile.email,
-      phone: profile.phone,
-      address_line_1: profile.address_line_1 || profile.location,
-      address_line_2: profile.address_line_2,
-      city: profile.city || profile.location,
-      state_region: profile.state_region,
-      postal_code: profile.postal_code,
-      country: profile.country,
-      location: profile.location,
-      linkedin: profile.linkedin,
-      github: profile.github,
-      website: profile.portfolio || profile.personal_website || profile.github,
-      resume: profile.resume_path,
-      work_authorization: profile.work_authorization,
-      sponsorship: profile.sponsorship_needed,
-      requires_relocation: profile.requires_relocation,
-      citizenship: profile.citizenship,
-      security_clearance: profile.security_clearance,
-      notice_period: profile.notice_period,
-      current_title: profile.current_title,
-      current_company: profile.current_company,
-      years_experience: profile.years_experience,
-      highest_degree: profile.highest_degree,
-      school: profile.school,
-      graduation_date: profile.graduation_date,
-      salary_expectation: profile.salary_expectation,
-      available_start_date: profile.available_start_date,
-      preferred_workplace: profile.preferred_workplace,
-      languages_spoken: profile.languages_spoken,
-      pronouns: profile.pronouns,
-      gender: profile.gender,
-      veteran_status: profile.veteran_status,
-      disability_status: profile.disability_status,
-      race_ethnicity: profile.race_ethnicity,
-      summary: profile.summary,
-      top_skills: profile.top_skills,
-      cover_letter: coverLetter
+      ...base,
+      rawAutocomplete,
+      autocompleteTokens: parsedAutocomplete.detailTokens,
+      autocompleteRawTokens: parsedAutocomplete.tokens,
+      signalText,
+      signalTextNormalized: normalize(signalText),
+      questionText: cleanText([base.groupName, base.accessibleName, base.sectionPath].filter(Boolean).join(" | ")),
+      questionNormalized: normalize([base.groupName, base.accessibleName, base.sectionPath].filter(Boolean).join(" | ")),
+      questionTokens: normalize([base.groupName, base.accessibleName, base.sectionPath].filter(Boolean).join(" | "))
+        .split(" ")
+        .filter(Boolean),
+      policyBucket: policyBucketForText([base.groupName, base.sectionPath].join(" | "))
     };
   }
 
-  function buildMatcherContext(profile, answersData, coverLetter) {
-    const taxonomyAnswers = {};
-    for (const [key, value] of Object.entries(profileTaxonomyAnswers(profile, coverLetter))) {
-      const text = toAnswerString(value);
-      if (text) {
-        taxonomyAnswers[key] = text;
-      }
-    }
-
-    const customAnswers = (answersData?.answers || [])
-      .map((item) => {
-        const answer = toAnswerString(item.answer);
-        const candidates = [item.question, ...(item.aliases || [])]
-          .map(normalize)
-          .filter(Boolean);
-        return {
-          answer,
-          question: cleanText(item.question),
-          candidates,
-          tokenSets: candidates.map((candidate) => candidate.split(" ").filter(Boolean))
-        };
-      })
-      .filter((item) => item.answer && item.candidates.length);
-
-    return { taxonomyAnswers, customAnswers };
+  function createFieldFromElement(element, labelIndex, adapter) {
+    const fieldId = element.getAttribute(FIELD_ATTR) || nextFieldId("control");
+    markFieldControls(fieldId, [element]);
+    const base = {
+      fieldId,
+      kind: controlKind(element),
+      htmlType: (element.getAttribute("type") || "").toLowerCase() || element.tagName.toLowerCase(),
+      element,
+      controls: [element],
+      name: element.getAttribute("name") || "",
+      id: element.id || "",
+      placeholder: cleanText(element.getAttribute("placeholder")),
+      accessibleName: accessibleNameForElement(element, labelIndex),
+      groupName: "",
+      sectionPath: sectionPathForElement(element),
+      rawAutocomplete: element.getAttribute("autocomplete") || "",
+      automationId: element.getAttribute("data-automation-id") || element.dataset?.automationId || "",
+      options: optionListForField(element)
+    };
+    const resolved = createResolvedField(base);
+    resolved.adapterHints = adapter.classifyField(resolved) || [];
+    return resolved;
   }
 
-  function classifyField(field, adapter) {
-    const adapterClassification = adapter?.classifyField?.(field);
-    if (adapterClassification?.taxonomyKey) {
-      return adapterClassification;
-    }
-    if (!field.searchTextNormalized) {
-      return { taxonomyKey: null, confidence: 0 };
-    }
-    for (const rule of FIELD_TAXONOMY_RULES) {
-      if (rule.pattern.test(field.searchTextNormalized)) {
-        return { taxonomyKey: rule.key, confidence: 0.95 };
-      }
-    }
-    if (field.type === "email") {
-      return { taxonomyKey: "email", confidence: 0.9 };
-    }
-    if (field.type === "tel") {
-      return { taxonomyKey: "phone", confidence: 0.9 };
-    }
-    if (field.type === "file") {
-      return { taxonomyKey: "resume", confidence: 0.95 };
-    }
-    return { taxonomyKey: null, confidence: 0 };
+  function createGroupedField(controls, labelIndex, adapter, kind) {
+    const fieldId = controls[0].getAttribute(FIELD_ATTR) || nextFieldId(kind);
+    markFieldControls(fieldId, controls);
+    const first = controls[0];
+    const fieldset = first.closest("fieldset");
+    const groupName =
+      cleanText(fieldset?.querySelector("legend")?.textContent) ||
+      readTextByIds(first.closest("[aria-labelledby]")?.getAttribute("aria-labelledby")) ||
+      nearestHeadingText(first);
+    const base = {
+      fieldId,
+      kind,
+      htmlType: kind,
+      element: first,
+      controls,
+      name: first.getAttribute("name") || "",
+      id: first.id || "",
+      placeholder: "",
+      accessibleName: groupLabelForControls(controls),
+      groupName,
+      sectionPath: sectionPathForElement(first),
+      rawAutocomplete: first.getAttribute("autocomplete") || "",
+      automationId: first.getAttribute("data-automation-id") || first.dataset?.automationId || "",
+      options: optionListForControls(controls, labelIndex)
+    };
+    const resolved = createResolvedField(base);
+    resolved.adapterHints = adapter.classifyField(resolved) || [];
+    return resolved;
   }
 
-  function scanFields(root = document, labelIndex = new Map(), adapter = null) {
-    const rawFields = [...root.querySelectorAll("input, textarea, select")];
-    const potentialFields = rawFields.filter(isPotentiallyRelevant);
-    const visibleFields = potentialFields.filter(isVisible);
+  function collectGenericFields(stepRoot, adapter) {
+    const labelIndex = buildLabelIndex(stepRoot);
+    const rawControls = [...stepRoot.querySelectorAll("input, textarea, select")];
+    const potentialControls = rawControls.filter(isPotentiallyRelevant);
+    const visibleControls = potentialControls.filter(isVisible);
+    const groupedKeys = new Set();
+    const radioAndCheckboxGroups = new Map();
 
-    const scannedFields = visibleFields.map((element) => {
-      const field = {
-        element,
-        tag: element.tagName.toLowerCase(),
-        type: (element.getAttribute("type") || "").toLowerCase(),
-        name: element.getAttribute("name") || "",
-        id: element.id || "",
-        placeholder: element.getAttribute("placeholder") || "",
-        ariaLabel: element.getAttribute("aria-label") || "",
-        autocomplete: element.getAttribute("autocomplete") || "",
-        labelText: getFieldLabel(element, labelIndex),
-        options:
-          element.tagName.toLowerCase() === "select"
-            ? [...element.options].map((option) => ({
-                label: cleanText(option.label || option.textContent),
-                value: option.value || ""
-              }))
-            : []
-      };
-      const searchText = cleanText(
-        [field.labelText, field.name, field.placeholder, field.ariaLabel, field.autocomplete, field.id].join(" ")
-      );
-      const nextField = {
-        ...field,
-        searchText,
-        searchTextNormalized: normalize(searchText)
-      };
-      return { ...nextField, ...classifyField(nextField, adapter) };
-    });
+    for (const element of visibleControls) {
+      const kind = controlKind(element);
+      if (kind !== "radio" && kind !== "checkbox") {
+        continue;
+      }
+      const groupName = element.getAttribute("name") || sectionPathForElement(element) || element.id;
+      const key = `${kind}:${groupName}`;
+      const list = radioAndCheckboxGroups.get(key) || [];
+      list.push(element);
+      radioAndCheckboxGroups.set(key, list);
+    }
+
+    const fields = [];
+    let groupedFieldCount = 0;
+    for (const [key, controls] of radioAndCheckboxGroups.entries()) {
+      if (controls.length <= 1) {
+        continue;
+      }
+      groupedKeys.add(key);
+      groupedFieldCount += 1;
+      fields.push(createGroupedField(controls, labelIndex, adapter, key.startsWith("radio:") ? "radio-group" : "checkbox-group"));
+    }
+
+    for (const element of visibleControls) {
+      const kind = controlKind(element);
+      const groupName = element.getAttribute("name") || sectionPathForElement(element) || element.id;
+      const key = `${kind}:${groupName}`;
+      if (groupedKeys.has(key) && (kind === "radio" || kind === "checkbox")) {
+        continue;
+      }
+      fields.push(createFieldFromElement(element, labelIndex, adapter));
+    }
 
     return {
-      fields: scannedFields,
+      fields,
       metrics: {
-        fieldCountRaw: rawFields.length,
-        fieldCountPotential: potentialFields.length,
-        fieldCountVisible: visibleFields.length
+        fieldCountRaw: rawControls.length,
+        fieldCountPotential: potentialControls.length,
+        fieldCountVisible: visibleControls.length,
+        fieldCountGrouped: groupedFieldCount
       }
     };
   }
 
-  function customAnswerMatch(field, customAnswers) {
-    const fieldTokens = field.searchTextNormalized.split(" ").filter(Boolean);
-    let best = null;
-    for (const item of customAnswers) {
-      let score = 0;
-      for (let index = 0; index < item.candidates.length; index += 1) {
-        const candidate = item.candidates[index];
-        if (field.searchTextNormalized.includes(candidate)) {
-          score = Math.max(score, candidate.length + 15);
-          continue;
-        }
-        const overlap = item.tokenSets[index].filter((token) => fieldTokens.includes(token)).length;
-        score = Math.max(score, overlap * 5);
-      }
-      if (score > 0) {
-        const confidence = Math.min(0.88, 0.45 + score / 60);
-        if (!best || score > best.score) {
-          best = {
-            answer: item.answer,
-            score,
-            source: "custom",
-            confidence,
-            reason: item.question ? `custom match: ${item.question}` : "custom match"
-          };
-        }
-      }
-    }
-    return best;
+  function makeCollectHelpers(adapter) {
+    return {
+      collectGenericFields: (stepRoot) => collectGenericFields(stepRoot, adapter)
+    };
   }
 
-  function chooseSelectOption(answer, field) {
-    const normalizedAnswer = normalize(answer);
-    for (const option of field.options) {
-      if (normalize(option.label) === normalizedAnswer) {
-        return option.value || option.label;
-      }
-    }
-    for (const option of field.options) {
-      const optionNormalized = normalize(option.label);
-      if (optionNormalized.includes(normalizedAnswer) || normalizedAnswer.includes(optionNormalized)) {
-        return option.value || option.label;
-      }
-    }
-    if (YES_WORDS.has(normalizedAnswer)) {
-      const option = field.options.find((item) => YES_WORDS.has(normalize(item.label)));
-      return option ? option.value || option.label : null;
-    }
-    if (NO_WORDS.has(normalizedAnswer)) {
-      const option = field.options.find((item) => NO_WORDS.has(normalize(item.label)));
-      return option ? option.value || option.label : null;
-    }
-    return null;
-  }
-
-  function chooseAnswer(field, matcherContext) {
-    if (field.taxonomyKey && matcherContext.taxonomyAnswers[field.taxonomyKey]) {
-      return {
-        answer: matcherContext.taxonomyAnswers[field.taxonomyKey],
-        source: "taxonomy",
-        reason: `taxonomy match: ${field.taxonomyKey}`,
-        confidence: field.confidence ?? 0.95
-      };
-    }
-
-    const custom = customAnswerMatch(field, matcherContext.customAnswers);
-    if (custom) {
-      return custom;
-    }
-
-    if (field.type === "email" && matcherContext.taxonomyAnswers.email) {
-      return {
-        answer: matcherContext.taxonomyAnswers.email,
-        source: "fallback",
-        reason: "email input",
-        confidence: 0.75
-      };
-    }
-    if ((field.type === "tel" || field.type === "phone") && matcherContext.taxonomyAnswers.phone) {
-      return {
-        answer: matcherContext.taxonomyAnswers.phone,
-        source: "fallback",
-        reason: "phone input",
-        confidence: 0.75
-      };
-    }
-    return null;
-  }
-
-  function dispatchInputEvents(element) {
-    element.dispatchEvent(new InputEvent("input", { bubbles: true, data: "", inputType: "insertText" }));
-    element.dispatchEvent(new Event("change", { bubbles: true }));
-    element.dispatchEvent(new Event("blur", { bubbles: true }));
-  }
-
-  function setNativeValue(element, value) {
-    const prototype =
-      element instanceof HTMLTextAreaElement
-        ? HTMLTextAreaElement.prototype
-        : element instanceof HTMLSelectElement
-          ? HTMLSelectElement.prototype
-          : HTMLInputElement.prototype;
-    const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-    if (descriptor?.set) {
-      descriptor.set.call(element, value);
-    } else {
-      element.value = value;
-    }
-    dispatchInputEvents(element);
-  }
-
-  function setChecked(element, checked) {
-    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked");
-    if (descriptor?.set) {
-      descriptor.set.call(element, checked);
-    } else {
-      element.checked = checked;
-    }
-    dispatchInputEvents(element);
-  }
-
-  async function setResumeFile(input, resumeAsset) {
-    if (!resumeAsset?.data) {
-      return false;
-    }
-    const file = new File([resumeAsset.data], resumeAsset.name || "resume.pdf", {
-      type: resumeAsset.type || "application/octet-stream",
-      lastModified: resumeAsset.lastModified || Date.now()
-    });
-    const transfer = new DataTransfer();
-    transfer.items.add(file);
-    input.files = transfer.files;
-    dispatchInputEvents(input);
-    return true;
-  }
-
-  function showToast(result) {
-    const existing = document.getElementById("jobmaster-toast");
-    if (existing) {
-      existing.remove();
-    }
-    const toast = document.createElement("div");
-    toast.id = "jobmaster-toast";
-    toast.style.cssText = [
-      "position:fixed",
-      "right:20px",
-      "bottom:20px",
-      "z-index:2147483647",
-      "max-width:360px",
-      "padding:14px 16px",
-      "border-radius:18px",
-      "background:rgba(18, 35, 33, 0.94)",
-      "color:white",
-      "box-shadow:0 18px 40px rgba(0,0,0,0.25)",
-      "font:13px/1.4 -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    ].join(";");
-    toast.innerHTML = `<strong style="display:block;margin-bottom:6px;">Jobmaster autofill</strong>
-      Filled ${result.filled.length} fields. Skipped ${result.skipped.length}. Review the page before submitting.`;
-    document.body.append(toast);
-    setTimeout(() => toast.remove(), 4500);
-  }
-
-  function resolveScanTarget() {
-    const adapter = globalScope.JobmasterPlatforms.detectPlatform(window.location);
+  function resolveScanTarget(autofillSettings = null) {
+    const adapter = globalScope.JobmasterPlatforms.detectPlatform(window.location, autofillSettings);
     const rootMatch = globalScope.JobmasterPlatforms.resolveApplicationRoot(adapter, document);
     const stepMatch = globalScope.JobmasterPlatforms.resolveStepRoot(adapter, rootMatch);
     return { adapter, rootMatch, stepMatch };
@@ -496,23 +417,25 @@
   }
 
   function buildScanSnapshot(scanTarget) {
-    const labelIndex = buildLabelIndex(scanTarget.stepMatch.node);
-    const snapshot = scanFields(scanTarget.stepMatch.node, labelIndex, scanTarget.adapter);
+    const helpers = makeCollectHelpers(scanTarget.adapter);
+    const snapshot = scanTarget.adapter.collectFields(scanTarget.stepMatch.node, helpers);
     return {
       ...snapshot,
       rootNode: scanTarget.rootMatch.node,
       stepNode: scanTarget.stepMatch.node,
       rootSelectorUsed: scanTarget.rootMatch.selector,
-      stepSelectorUsed: scanTarget.stepMatch.selector
+      stepSelectorUsed: scanTarget.stepMatch.selector,
+      submissionState: scanTarget.adapter.detectSubmissionState(document)
     };
   }
 
-  function getScanSnapshot(scanTarget) {
+  function getScanSnapshot(scanTarget, settingsKey = "") {
     const cached = scanRuntime.cachedScan;
     if (
       cached &&
       cached.rootNode === scanTarget.rootMatch.node &&
       cached.stepNode === scanTarget.stepMatch.node &&
+      cached.settingsKey === settingsKey &&
       cached.mutationVersion === scanRuntime.mutationVersion
     ) {
       return { ...cached.snapshot, cacheHit: true };
@@ -521,143 +444,499 @@
     scanRuntime.cachedScan = {
       rootNode: scanTarget.rootMatch.node,
       stepNode: scanTarget.stepMatch.node,
+      settingsKey,
       mutationVersion: scanRuntime.mutationVersion,
       snapshot
     };
     return { ...snapshot, cacheHit: false };
   }
 
-  async function fillField(field, candidate, resumeAsset) {
-    if (field.type === "file") {
-      const ok = await setResumeFile(field.element, resumeAsset);
-      if (ok) {
-        return { filled: true, message: "resume" };
+  function showToast(result) {
+    const existing = document.getElementById("jobmaster-toast");
+    if (existing) {
+      existing.remove();
+    }
+    const toast = document.createElement("div");
+    toast.id = "jobmaster-toast";
+    toast.style.cssText = [
+      "position:fixed",
+      "right:20px",
+      "bottom:20px",
+      "z-index:2147483647",
+      "max-width:360px",
+      "padding:14px 16px",
+      "border-radius:18px",
+      "background:rgba(18, 35, 33, 0.94)",
+      "color:white",
+      "box-shadow:0 18px 40px rgba(0,0,0,0.25)",
+      "font:13px/1.4 -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    ].join(";");
+    toast.innerHTML = `<strong style="display:block;margin-bottom:6px;">Jobmaster autofill</strong>
+      Filled ${result.filled.length} fields. ${result.review.length} need review. ${result.skipped.length} were skipped.`;
+    document.body.append(toast);
+    setTimeout(() => toast.remove(), 4500);
+  }
+
+  function dispatchInputEvents(element) {
+    element.dispatchEvent(new InputEvent("input", { bubbles: true, data: "", inputType: "insertText" }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+    element.dispatchEvent(new Event("blur", { bubbles: true }));
+  }
+
+  function setNativeValue(element, value) {
+    const prototype =
+      element instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : element instanceof HTMLSelectElement
+          ? HTMLSelectElement.prototype
+          : HTMLInputElement.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+    if (descriptor?.set) {
+      descriptor.set.call(element, value);
+    } else {
+      element.value = value;
+    }
+    dispatchInputEvents(element);
+  }
+
+  function setChecked(element, checked) {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked");
+    if (descriptor?.set) {
+      descriptor.set.call(element, checked);
+    } else {
+      element.checked = checked;
+    }
+    dispatchInputEvents(element);
+  }
+
+  async function setResumeFile(input, resumeAsset) {
+    if (!resumeAsset?.data) {
+      return false;
+    }
+    const file = new File([resumeAsset.data], resumeAsset.name || "resume.pdf", {
+      type: resumeAsset.type || "application/octet-stream",
+      lastModified: resumeAsset.lastModified || Date.now()
+    });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    input.files = transfer.files;
+    dispatchInputEvents(input);
+    return true;
+  }
+
+  function chooseSelectOption(answer, field) {
+    const normalizedAnswer = normalize(answer);
+    for (const option of field.options || []) {
+      if (normalize(option.label) === normalizedAnswer || normalize(option.value) === normalizedAnswer) {
+        return option.value || option.label;
       }
-      return { filled: false, skippedReason: "no stored resume" };
+    }
+    for (const option of field.options || []) {
+      const optionNormalized = normalize(option.label);
+      if (optionNormalized.includes(normalizedAnswer) || normalizedAnswer.includes(optionNormalized)) {
+        return option.value || option.label;
+      }
+    }
+    return null;
+  }
+
+  function verifyFilledValue(field, expectedAnswer) {
+    const normalizedExpected = normalize(expectedAnswer);
+    if (field.kind === "file") {
+      return Boolean(field.controls[0]?.files?.length);
+    }
+    if (field.kind === "checkbox") {
+      return BOOLEANMatch(field.controls[0].checked, normalizedExpected);
+    }
+    if (field.kind === "checkbox-group") {
+      const expectedTokens = normalizedExpected.split(/[,\n]/).map((token) => token.trim()).filter(Boolean);
+      if (!expectedTokens.length) {
+        return false;
+      }
+      return expectedTokens.every((token) =>
+        field.controls.some(
+          (control) =>
+            control.checked &&
+            (normalize(control.value) === token || normalize(control.closest("label")?.innerText || "") === token)
+        )
+      );
+    }
+    if (field.kind === "radio-group") {
+      return field.controls.some((control) => {
+        if (!control.checked) {
+          return false;
+        }
+        const controlText = normalize(
+          cleanText(control.closest("label")?.innerText || control.closest("label")?.textContent || control.value)
+        );
+        return controlText === normalizedExpected || controlText.includes(normalizedExpected);
+      });
+    }
+    if (field.kind === "select") {
+      return normalize(field.controls[0].value) === normalizedExpected;
+    }
+    return normalize(field.controls[0].value) === normalizedExpected;
+  }
+
+  function BOOLEANMatch(checked, normalizedExpected) {
+    if (CORE.BOOLEAN_TRUE.has(normalizedExpected)) {
+      return checked === true;
+    }
+    if (CORE.BOOLEAN_FALSE.has(normalizedExpected)) {
+      return checked === false;
+    }
+    return false;
+  }
+
+  function installPageBridge() {
+    if (document.getElementById("jobmaster-page-bridge")) {
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = "jobmaster-page-bridge";
+    script.textContent = `
+      (() => {
+        if (window.__jobmasterPageBridgeInstalled) {
+          return;
+        }
+        window.__jobmasterPageBridgeInstalled = true;
+        const FIELD_ATTR = ${JSON.stringify(FIELD_ATTR)};
+        function cleanText(value) {
+          return String(value || "").replace(/\\s+/g, " ").trim();
+        }
+        function normalize(value) {
+          return cleanText(value).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        }
+        function dispatchInputEvents(element) {
+          element.dispatchEvent(new InputEvent("input", { bubbles: true, data: "", inputType: "insertText" }));
+          element.dispatchEvent(new Event("change", { bubbles: true }));
+          element.dispatchEvent(new Event("blur", { bubbles: true }));
+        }
+        function setValue(element, value) {
+          const prototype = element.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : element.tagName === "SELECT" ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+          const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+          if (descriptor && descriptor.set) {
+            descriptor.set.call(element, value);
+          } else {
+            element.value = value;
+          }
+          dispatchInputEvents(element);
+        }
+        function setChecked(element, checked) {
+          const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "checked");
+          if (descriptor && descriptor.set) {
+            descriptor.set.call(element, checked);
+          } else {
+            element.checked = checked;
+          }
+          dispatchInputEvents(element);
+        }
+        function controlsFor(fieldId) {
+          return [...document.querySelectorAll("[" + FIELD_ATTR + "='" + CSS.escape(fieldId) + "']")];
+        }
+        window.addEventListener("message", (event) => {
+          if (event.source !== window || event.data?.source !== ${JSON.stringify(BRIDGE_REQUEST_SOURCE)}) {
+            return;
+          }
+          const { requestId, command, payload } = event.data;
+          try {
+            const controls = controlsFor(payload.fieldId);
+            let ok = false;
+            if (command === "set-value") {
+              if (controls[0]) {
+                controls[0].focus();
+                setValue(controls[0], payload.value);
+                ok = normalize(controls[0].value) === normalize(payload.value);
+              }
+            } else if (command === "set-checked") {
+              if (controls[0]) {
+                setChecked(controls[0], Boolean(payload.checked));
+                ok = controls[0].checked === Boolean(payload.checked);
+              }
+            } else if (command === "select-option") {
+              if (controls[0]) {
+                const element = controls[0];
+                const target = [...element.options].find((option) => {
+                  const optionText = normalize(option.label || option.textContent || option.value);
+                  return optionText === normalize(payload.value) || optionText.includes(normalize(payload.value));
+                });
+                if (target) {
+                  setValue(element, target.value || target.textContent || target.label);
+                  ok = normalize(element.value) === normalize(target.value || target.textContent || target.label);
+                }
+              }
+            } else if (command === "choose-group-option") {
+              const normalizedValue = normalize(payload.value);
+              const target = controls.find((control) => {
+                const label = normalize(cleanText(control.closest("label")?.innerText || control.closest("label")?.textContent || control.value));
+                return label === normalizedValue || label.includes(normalizedValue) || normalize(control.value) === normalizedValue;
+              });
+              if (target) {
+                setChecked(target, true);
+                ok = target.checked === true;
+              }
+            }
+            window.postMessage({ source: ${JSON.stringify(BRIDGE_RESPONSE_SOURCE)}, requestId, ok }, "*");
+          } catch (error) {
+            window.postMessage({ source: ${JSON.stringify(BRIDGE_RESPONSE_SOURCE)}, requestId, ok: false, error: String(error) }, "*");
+          }
+        });
+      })();
+    `;
+    (document.documentElement || document.head || document.body).append(script);
+    script.remove();
+  }
+
+  function bridgeFill(command, payload) {
+    installPageBridge();
+    const requestId = `jm-bridge-${++scanRuntime.bridgeCounter}`;
+    return new Promise((resolve) => {
+      const timeoutId = setTimeout(() => {
+        scanRuntime.bridgePending.delete(requestId);
+        resolve({ ok: false, error: "bridge timeout" });
+      }, 800);
+      scanRuntime.bridgePending.set(requestId, { resolve, timeoutId });
+      window.postMessage({ source: BRIDGE_REQUEST_SOURCE, requestId, command, payload }, "*");
+    });
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.source !== window || event.data?.source !== BRIDGE_RESPONSE_SOURCE) {
+      return;
+    }
+    const pending = scanRuntime.bridgePending.get(event.data.requestId);
+    if (!pending) {
+      return;
+    }
+    clearTimeout(pending.timeoutId);
+    scanRuntime.bridgePending.delete(event.data.requestId);
+    pending.resolve({ ok: Boolean(event.data.ok), error: event.data.error || "" });
+  });
+
+  async function fillField(field, match, adapter, context) {
+    const answer = adapter.normalizeChoice(field, match.selectedAnswer, context);
+    if (field.kind === "file") {
+      const ok = await setResumeFile(field.controls[0], context.resumeAsset);
+      return ok ? { filled: true, method: "content", message: "resume upload" } : { filled: false, skippedReason: "no stored resume" };
     }
 
-    if (field.tag === "select") {
-      const option = chooseSelectOption(candidate.answer, field);
+    if (field.kind === "select") {
+      const option = chooseSelectOption(answer, field);
       if (!option) {
-        return { filled: false, skippedReason: "no select match" };
+        return { filled: false, skippedReason: "no select option match" };
       }
-      setNativeValue(field.element, option);
-      return { filled: true, message: candidate.reason };
+      setNativeValue(field.controls[0], option);
+      if (verifyFilledValue(field, option)) {
+        return { filled: true, method: "content", message: match.reason };
+      }
+      const bridgeResult = await bridgeFill("select-option", { fieldId: field.fieldId, value: answer });
+      return bridgeResult.ok && verifyFilledValue(field, option)
+        ? { filled: true, method: "page-bridge", message: match.reason }
+        : { filled: false, skippedReason: "select value did not persist" };
     }
 
-    if (field.type === "checkbox") {
-      const normalizedAnswer = normalize(candidate.answer);
-      if (YES_WORDS.has(normalizedAnswer)) {
-        setChecked(field.element, true);
-        return { filled: true, message: "checked" };
+    if (field.kind === "checkbox") {
+      const normalizedAnswer = normalize(answer);
+      if (!CORE.BOOLEAN_TRUE.has(normalizedAnswer) && !CORE.BOOLEAN_FALSE.has(normalizedAnswer)) {
+        return { filled: false, skippedReason: "checkbox answer ambiguous" };
       }
-      if (NO_WORDS.has(normalizedAnswer)) {
-        setChecked(field.element, false);
-        return { filled: true, message: "unchecked" };
+      const checked = CORE.BOOLEAN_TRUE.has(normalizedAnswer);
+      setChecked(field.controls[0], checked);
+      if (verifyFilledValue(field, answer)) {
+        return { filled: true, method: "content", message: match.reason };
       }
-      return { filled: false, skippedReason: "checkbox ambiguous" };
+      const bridgeResult = await bridgeFill("set-checked", { fieldId: field.fieldId, checked });
+      return bridgeResult.ok && verifyFilledValue(field, answer)
+        ? { filled: true, method: "page-bridge", message: match.reason }
+        : { filled: false, skippedReason: "checkbox value did not persist" };
     }
 
-    if (field.type === "radio") {
-      const normalizedAnswer = normalize(candidate.answer);
-      const radioValue = normalize(field.element.value);
-      const radioLabel = normalize(field.labelText);
-      if (
-        radioValue === normalizedAnswer ||
-        normalizedAnswer.includes(radioValue) ||
-        radioLabel.includes(normalizedAnswer)
-      ) {
-        setChecked(field.element, true);
-        return { filled: true, message: candidate.reason };
+    if (field.kind === "radio-group") {
+      const localControl = field.controls.find((control) => {
+        const label = normalize(cleanText(control.closest("label")?.innerText || control.closest("label")?.textContent || control.value));
+        return label === normalize(answer) || label.includes(normalize(answer)) || normalize(control.value) === normalize(answer);
+      });
+      if (localControl) {
+        setChecked(localControl, true);
       }
-      return { filled: false, skippedReason: "radio mismatch" };
+      if (verifyFilledValue(field, answer)) {
+        return { filled: true, method: "content", message: match.reason };
+      }
+      const bridgeResult = await bridgeFill("choose-group-option", { fieldId: field.fieldId, value: answer });
+      return bridgeResult.ok && verifyFilledValue(field, answer)
+        ? { filled: true, method: "page-bridge", message: match.reason }
+        : { filled: false, skippedReason: "radio option did not persist" };
     }
 
-    field.element.focus();
-    setNativeValue(field.element, candidate.answer);
-    return { filled: true, message: candidate.reason };
+    if (field.kind === "checkbox-group") {
+      const tokens = answer
+        .split(/[,\n]/)
+        .map((token) => token.trim())
+        .filter(Boolean);
+      if (!tokens.length) {
+        return { filled: false, skippedReason: "checkbox group answer ambiguous" };
+      }
+      for (const control of field.controls) {
+        const label = normalize(cleanText(control.closest("label")?.innerText || control.closest("label")?.textContent || control.value));
+        const shouldCheck = tokens.some((token) => label === normalize(token) || label.includes(normalize(token)));
+        if (shouldCheck) {
+          setChecked(control, true);
+        }
+      }
+      return verifyFilledValue(field, answer)
+        ? { filled: true, method: "content", message: match.reason }
+        : { filled: false, skippedReason: "checkbox selections did not persist" };
+    }
+
+    field.controls[0].focus();
+    setNativeValue(field.controls[0], answer);
+    if (verifyFilledValue(field, answer)) {
+      return { filled: true, method: "content", message: match.reason };
+    }
+    const bridgeResult = await bridgeFill("set-value", { fieldId: field.fieldId, value: answer });
+    return bridgeResult.ok && verifyFilledValue(field, answer)
+      ? { filled: true, method: "page-bridge", message: match.reason }
+      : { filled: false, skippedReason: "value did not persist" };
+  }
+
+  function summarizeScan(session) {
+    return {
+      platform: session.platform,
+      applicationFormDetected: session.metrics.fieldCountVisible > 0,
+      rootSelectorUsed: session.root.selector,
+      stepSelectorUsed: session.step.selector,
+      fieldCountHint: session.metrics.fieldCountVisible,
+      submissionState: session.submissionState,
+      metrics: session.metrics,
+      job: session.job,
+      fieldsPreview: session.fields.slice(0, 6).map((field) => ({
+        fieldId: field.fieldId,
+        kind: field.kind,
+        accessibleName: field.accessibleName,
+        groupName: field.groupName,
+        autocompleteTokens: field.autocompleteTokens
+      }))
+    };
+  }
+
+  function analyzeCurrentPage(context = {}) {
+    const startedAt = performance.now();
+    const scanTarget = resolveScanTarget(context.autofillSettings);
+    ensureScanObserver(scanTarget.rootMatch.node);
+    const snapshot = getScanSnapshot(
+      scanTarget,
+      JSON.stringify(context.autofillSettings?.platformOverrides || {})
+    );
+    const session = {
+      platform: scanTarget.adapter.name,
+      root: { selector: snapshot.rootSelectorUsed },
+      step: { selector: snapshot.stepSelectorUsed },
+      job: scanTarget.adapter.extractJob(document, window.location),
+      fields: snapshot.fields,
+      submissionState: snapshot.submissionState,
+      metrics: {
+        ...snapshot.metrics,
+        scanDurationMs: Math.round(performance.now() - startedAt),
+        cacheHit: snapshot.cacheHit,
+        rootSelectorUsed: snapshot.rootSelectorUsed,
+        stepSelectorUsed: snapshot.stepSelectorUsed
+      }
+    };
+    return summarizeScan(session);
   }
 
   async function runAutofill(context) {
     const startedAt = performance.now();
-    const scanTarget = resolveScanTarget();
+    const answerContext = CORE.buildAnswerContext(context);
+    const scanTarget = resolveScanTarget(context.autofillSettings);
     ensureScanObserver(scanTarget.rootMatch.node);
-    const scanSnapshot = getScanSnapshot(scanTarget);
-    const matcherContext = buildMatcherContext(context.profile, context.answers, context.coverLetterText);
+    const scanSnapshot = getScanSnapshot(
+      scanTarget,
+      JSON.stringify(context.autofillSettings?.platformOverrides || {})
+    );
     const filled = [];
+    const review = [];
     const skipped = [];
-    const classified = [];
+    const matches = [];
 
     for (const field of scanSnapshot.fields) {
-      const candidate = chooseAnswer(field, matcherContext);
-      const label = field.labelText || field.name || field.id || field.placeholder || "<unnamed>";
+      const match = CORE.matchResolvedField(field, answerContext, scanTarget.adapter.name);
       const entry = {
-        label,
-        taxonomyKey: field.taxonomyKey,
-        confidence: candidate?.confidence ?? field.confidence ?? 0,
-        matched: Boolean(candidate),
-        source: candidate?.source || "",
-        matchReason: candidate?.reason || "",
-        action: "skipped",
-        skippedReason: "",
-        answerPreview: candidate?.answer ? previewValue(candidate.answer) : ""
+        fieldId: field.fieldId,
+        label: field.questionText || field.signalText || "<unnamed>",
+        kind: field.kind,
+        taxonomyKey: match.taxonomyKey,
+        source: match.source,
+        confidence: match.confidence,
+        decision: match.decision,
+        reason: match.reason,
+        skipReason: match.skipReason,
+        selectedAnswerPreview: cleanText(match.selectedAnswer).slice(0, 120)
       };
 
-      if (!candidate || !String(candidate.answer).trim()) {
-        entry.skippedReason = "no answer match";
-        skipped.push(label);
-        classified.push(entry);
+      if (match.decision === "review") {
+        review.push(entry);
+        matches.push(entry);
+        continue;
+      }
+
+      if (match.decision === "skip") {
+        skipped.push(entry);
+        matches.push(entry);
         continue;
       }
 
       try {
-        const outcome = await fillField(field, candidate, context.resumeAsset);
+        const outcome = await fillField(field, match, scanTarget.adapter, context);
         if (outcome.filled) {
-          entry.action = "filled";
-          filled.push(`${label} <- ${outcome.message}`);
+          entry.fillMethod = outcome.method;
+          filled.push(entry);
         } else {
-          entry.skippedReason = outcome.skippedReason || "not filled";
-          skipped.push(`${label} (${entry.skippedReason})`);
+          entry.decision = "skip";
+          entry.skipReason = outcome.skippedReason;
+          skipped.push(entry);
         }
       } catch (error) {
-        entry.skippedReason = error instanceof Error ? error.message : String(error);
-        skipped.push(`${label} (${entry.skippedReason})`);
+        entry.decision = "skip";
+        entry.skipReason = error instanceof Error ? error.message : String(error);
+        skipped.push(entry);
       }
-      classified.push(entry);
+      matches.push(entry);
     }
 
-    const matchBreakdown = classified.reduce((accumulator, item) => {
-      if (!item.source) {
-        return accumulator;
-      }
-      accumulator[item.source] = (accumulator[item.source] || 0) + 1;
+    const matchBreakdown = matches.reduce((accumulator, item) => {
+      const key = item.source || item.decision;
+      accumulator[key] = (accumulator[key] || 0) + 1;
       return accumulator;
     }, {});
 
     const result = {
       filled,
+      review,
       skipped,
+      matches,
       metrics: {
         ...scanSnapshot.metrics,
         platform: scanTarget.adapter.name,
         rootSelectorUsed: scanSnapshot.rootSelectorUsed,
         stepSelectorUsed: scanSnapshot.stepSelectorUsed,
-        fieldCountMatched: classified.filter((item) => item.matched).length,
-        fieldCountClassified: classified.filter((item) => item.taxonomyKey).length,
+        submissionState: scanSnapshot.submissionState,
+        fieldCountMatched: matches.filter((item) => item.decision !== "skip" || item.source).length,
+        fieldCountReview: review.length,
         fieldCountFilled: filled.length,
         fieldCountSkipped: skipped.length,
         cacheHit: scanSnapshot.cacheHit,
         mutationVersion: scanRuntime.mutationVersion,
         matchBreakdown,
         scanDurationMs: Math.round(performance.now() - startedAt)
-      },
-      classified
+      }
     };
     showToast(result);
     return result;
   }
 
   globalScope.JobmasterAutofill = {
+    analyzeCurrentPage,
     runAutofill
   };
 })(globalThis);

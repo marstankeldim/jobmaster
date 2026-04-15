@@ -4,7 +4,7 @@
       try {
         sendResponse({
           ok: true,
-          analysis: globalScope.JobmasterPlatforms.analyzePage()
+          analysis: globalScope.JobmasterAutofill.analyzeCurrentPage(message.context || {})
         });
       } catch (error) {
         sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
@@ -21,4 +21,3 @@
     }
   });
 })(globalThis);
-

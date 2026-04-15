@@ -1,6 +1,7 @@
 import {
   createDefaultState,
   DEFAULT_ANSWERS,
+  DEFAULT_AUTOFILL_SETTINGS,
   DEFAULT_CANDIDATE_SOURCES,
   DEFAULT_COVER_LETTER_TEMPLATE,
   DEFAULT_PROFILE,
@@ -61,6 +62,24 @@ function stripLegacyExampleValues(profile) {
     }
   }
   return next;
+}
+
+function normalizeAutofillSettings(settings = {}) {
+  return mergeObjects(DEFAULT_AUTOFILL_SETTINGS, settings ?? {});
+}
+
+function normalizeAnswerBank(answers = {}) {
+  const merged = mergeObjects(DEFAULT_ANSWERS, answers ?? {});
+  return {
+    answers: (merged.answers || []).map((item) => ({
+      question: item.question || "",
+      aliases: Array.isArray(item.aliases) ? item.aliases : [],
+      answer: item.answer ?? "",
+      answerType: item.answerType || "string",
+      aiHint: item.aiHint || "",
+      platformHints: Array.isArray(item.platformHints) ? item.platformHints : []
+    }))
+  };
 }
 
 function openDb() {
@@ -131,6 +150,9 @@ export async function ensureDefaults() {
   if (current[STORAGE_KEYS.scanHistory] == null) {
     updates[STORAGE_KEYS.scanHistory] = [];
   }
+  if (current[STORAGE_KEYS.autofillSettings] == null) {
+    updates[STORAGE_KEYS.autofillSettings] = defaultState.autofillSettings;
+  }
   if (Object.keys(updates).length) {
     await chrome.storage.local.set(updates);
   }
@@ -141,8 +163,9 @@ export async function getState() {
   const current = await chrome.storage.local.get(Object.values(STORAGE_KEYS));
   return {
     profile: stripLegacyExampleValues(mergeObjects(DEFAULT_PROFILE, current[STORAGE_KEYS.profile] ?? {})),
-    answers: mergeObjects(DEFAULT_ANSWERS, current[STORAGE_KEYS.answers] ?? {}),
+    answers: normalizeAnswerBank(current[STORAGE_KEYS.answers] ?? {}),
     candidateSources: mergeObjects(DEFAULT_CANDIDATE_SOURCES, current[STORAGE_KEYS.candidateSources] ?? {}),
+    autofillSettings: normalizeAutofillSettings(current[STORAGE_KEYS.autofillSettings] ?? {}),
     coverLetterTemplate: current[STORAGE_KEYS.coverLetterTemplate] ?? DEFAULT_COVER_LETTER_TEMPLATE,
     jobs: sortByUpdatedAt(current[STORAGE_KEYS.jobs] ?? []),
     events: sortByUpdatedAt(current[STORAGE_KEYS.events] ?? []),
@@ -157,13 +180,20 @@ export async function saveProfile(profile) {
 }
 
 export async function saveAnswers(answers) {
-  await chrome.storage.local.set({ [STORAGE_KEYS.answers]: answers });
-  return answers;
+  const normalized = normalizeAnswerBank(answers);
+  await chrome.storage.local.set({ [STORAGE_KEYS.answers]: normalized });
+  return normalized;
 }
 
 export async function saveCandidateSources(candidateSources) {
   await chrome.storage.local.set({ [STORAGE_KEYS.candidateSources]: candidateSources });
   return candidateSources;
+}
+
+export async function saveAutofillSettings(autofillSettings) {
+  const normalized = normalizeAutofillSettings(autofillSettings);
+  await chrome.storage.local.set({ [STORAGE_KEYS.autofillSettings]: normalized });
+  return normalized;
 }
 
 export async function saveCoverLetterTemplate(coverLetterTemplate) {
@@ -390,6 +420,7 @@ export async function exportPackage() {
       profile: state.profile,
       answers: state.answers,
       candidateSources: state.candidateSources,
+      autofillSettings: state.autofillSettings,
       coverLetterTemplate: state.coverLetterTemplate,
       jobs: state.jobs,
       events: state.events,
@@ -406,8 +437,9 @@ export async function importPackage(packagePayload) {
   const data = packagePayload.data;
   await chrome.storage.local.set({
     [STORAGE_KEYS.profile]: mergeObjects(DEFAULT_PROFILE, data.profile ?? {}),
-    [STORAGE_KEYS.answers]: mergeObjects(DEFAULT_ANSWERS, data.answers ?? {}),
+    [STORAGE_KEYS.answers]: normalizeAnswerBank(data.answers ?? {}),
     [STORAGE_KEYS.candidateSources]: mergeObjects(DEFAULT_CANDIDATE_SOURCES, data.candidateSources ?? {}),
+    [STORAGE_KEYS.autofillSettings]: normalizeAutofillSettings(data.autofillSettings ?? {}),
     [STORAGE_KEYS.coverLetterTemplate]: data.coverLetterTemplate ?? DEFAULT_COVER_LETTER_TEMPLATE,
     [STORAGE_KEYS.jobs]: Array.isArray(data.jobs) ? data.jobs : [],
     [STORAGE_KEYS.events]: Array.isArray(data.events) ? data.events : [],

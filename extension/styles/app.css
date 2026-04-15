@@ -137,12 +137,14 @@ label {
 
 input,
 textarea,
+select,
 button {
   font: inherit;
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   padding: 0.85rem 0.95rem;
   border-radius: 16px;
@@ -269,6 +271,7 @@ textarea {
   display: block;
   color: var(--muted);
   font-size: 0.9rem;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 860px) {
@@ -278,4 +281,3 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
-

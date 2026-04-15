@@ -20,7 +20,8 @@ export const STORAGE_KEYS = {
   jobs: "jm.jobs",
   events: "jm.events",
   resumeMeta: "jm.resumeMeta",
-  scanHistory: "jm.scanHistory"
+  scanHistory: "jm.scanHistory",
+  autofillSettings: "jm.autofillSettings"
 };
 
 export const DEFAULT_PROFILE = {
@@ -126,19 +127,40 @@ export const DEFAULT_ANSWERS = {
     {
       question: "Are you legally authorized to work in the United States?",
       answer: "Yes",
-      aliases: ["authorized to work", "work authorization", "eligible to work"]
+      aliases: ["authorized to work", "work authorization", "eligible to work"],
+      answerType: "boolean",
+      aiHint: "",
+      platformHints: []
     },
     {
       question: "Will you now or in the future require visa sponsorship?",
       answer: "No",
-      aliases: ["sponsorship", "visa sponsorship", "require sponsorship"]
+      aliases: ["sponsorship", "visa sponsorship", "require sponsorship"],
+      answerType: "boolean",
+      aiHint: "",
+      platformHints: []
     },
     {
       question: "What is your preferred work arrangement?",
       answer: "Remote or hybrid",
-      aliases: ["remote", "hybrid", "onsite", "work arrangement"]
+      aliases: ["remote", "hybrid", "onsite", "work arrangement"],
+      answerType: "choice",
+      aiHint: "",
+      platformHints: []
     }
   ]
+};
+
+export const DEFAULT_AUTOFILL_SETTINGS = {
+  mode: "conservative",
+  aiFallbackEnabled: false,
+  platformOverrides: {
+    workday: true,
+    linkedin: true,
+    greenhouse: true,
+    lever: true,
+    generic: true
+  }
 };
 
 export const DEFAULT_CANDIDATE_SOURCES = {
@@ -210,6 +232,7 @@ export function createDefaultState() {
     profile: deepClone(DEFAULT_PROFILE),
     answers: deepClone(DEFAULT_ANSWERS),
     candidateSources: deepClone(DEFAULT_CANDIDATE_SOURCES),
+    autofillSettings: deepClone(DEFAULT_AUTOFILL_SETTINGS),
     coverLetterTemplate: DEFAULT_COVER_LETTER_TEMPLATE,
     jobs: [],
     events: [],
