@@ -40,7 +40,7 @@ export function renderCoverLetter(templateText, job = {}, profile = {}) {
 
 export function latexToText(renderedLatex) {
   return String(renderedLatex)
-    .replace(/(?m)^%.*$/gm, "")
+    .replace(/^%.*$/gm, "")
     .replace(/\\documentclass(?:\[[^\]]*\])?\{[^}]*\}/g, "")
     .replace(/\\usepackage(?:\[[^\]]*\])?\{[^}]*\}/g, "")
     .replace(/\\begin\{[^}]+\}/g, "")
@@ -55,4 +55,3 @@ export function latexToText(renderedLatex) {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
-

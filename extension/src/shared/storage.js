@@ -12,13 +12,17 @@ const DB_NAME = "jobmaster-extension-db";
 const FILE_STORE = "files";
 const RESUME_FILE_KEY = "resume";
 
+function deepClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 function nowIso() {
   return new Date().toISOString();
 }
 
 function mergeObjects(baseValue, overrideValue) {
   if (Array.isArray(baseValue)) {
-    return Array.isArray(overrideValue) ? overrideValue : structuredClone(baseValue);
+    return Array.isArray(overrideValue) ? overrideValue : deepClone(baseValue);
   }
   if (baseValue && typeof baseValue === "object") {
     const result = {};
@@ -27,7 +31,7 @@ function mergeObjects(baseValue, overrideValue) {
       const baseChild = baseValue[key];
       const overrideChild = overrideValue?.[key];
       if (overrideChild === undefined) {
-        result[key] = structuredClone(baseChild);
+        result[key] = deepClone(baseChild);
       } else if (baseChild && typeof baseChild === "object" && !Array.isArray(baseChild)) {
         result[key] = mergeObjects(baseChild, overrideChild ?? {});
       } else {
@@ -375,4 +379,3 @@ export async function importPackage(packagePayload) {
     [STORAGE_KEYS.resumeMeta]: data.resumeMeta ?? null
   });
 }
-

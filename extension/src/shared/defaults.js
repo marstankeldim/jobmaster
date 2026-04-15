@@ -1,3 +1,7 @@
+function deepClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 export const STATUS_OPTIONS = [
   "saved",
   "applying",
@@ -122,13 +126,12 @@ I would welcome the opportunity to contribute to {company} and discuss how I can
 
 export function createDefaultState() {
   return {
-    profile: structuredClone(DEFAULT_PROFILE),
-    answers: structuredClone(DEFAULT_ANSWERS),
-    candidateSources: structuredClone(DEFAULT_CANDIDATE_SOURCES),
+    profile: deepClone(DEFAULT_PROFILE),
+    answers: deepClone(DEFAULT_ANSWERS),
+    candidateSources: deepClone(DEFAULT_CANDIDATE_SOURCES),
     coverLetterTemplate: DEFAULT_COVER_LETTER_TEMPLATE,
     jobs: [],
     events: [],
     resumeMeta: null
   };
 }
-
