@@ -1,6 +1,6 @@
 # Jobmaster Extension
 
-Current version: `0.2.0`
+Current version: `0.2.1`
 
 ## Load Unpacked
 
@@ -24,10 +24,25 @@ Current version: `0.2.0`
 - recent scan history with timing, root/step scope, and skipped-field previews
 - conservative review queue for medium-confidence matches
 
+## Autofill Behavior
+
+- `Conservative` now autofills clear high-signal fields like email, phone, many name/address fields, and file uploads more reliably.
+- Long-form custom prompts are still biased toward `Needs Review` instead of being pasted blindly.
+- The popup now analyzes pages using your saved autofill settings, so adapter toggles and mode changes affect both scan and fill behavior consistently.
+
+## Troubleshooting
+
+- Reload the unpacked extension after each update so the new manifest version is picked up.
+- Open the popup and check `Last Autofill`:
+  - `Filled` means the value was applied.
+  - `Needs Review` means Jobmaster found a plausible answer but kept it conservative.
+  - `Skipped` means there was no strong enough match or the page refused the fill.
+- If a field should have filled but did not, start with `Refresh` in the popup after the application modal/step finishes loading.
+- Workday and LinkedIn are still the highest-variance targets; some variants will need more adapter tuning against live pages.
+
 ## Notes
 
 - Resume upload is stored inside the extension and used for best-effort file autofill.
 - Site-specific adapters are an initial pass and will need hardening on real job flows.
-- Reload the unpacked extension after each update so the new manifest version is picked up.
 - Local replay fixtures live in `extension/test-fixtures/html/`.
 - Run the JS autofill core tests with `node --test extension/tests/*.test.mjs`.

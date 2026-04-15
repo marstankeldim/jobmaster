@@ -3,6 +3,7 @@ import { callExtension } from "../shared/client.js";
 let activeTab = null;
 let lastAnalysis = null;
 let lastSavedJob = null;
+let lastState = null;
 const analysisCache = new Map();
 
 function popupFlash(message, isError = false) {
@@ -144,12 +145,25 @@ async function getActiveTab() {
   return activeTab;
 }
 
+async function getExtensionState() {
+  if (lastState) {
+    return lastState;
+  }
+  const response = await callExtension("jobmaster:get-state");
+  if (!response.ok) {
+    throw new Error(response.error || "Could not load extension state.");
+  }
+  lastState = response.state;
+  return lastState;
+}
+
 async function analyzeCurrentPage() {
   const tab = activeTab ?? (await getActiveTab());
   if (!tab?.id || !/^https?:/i.test(tab.url || "")) {
     throw new Error("This page does not allow extension automation.");
   }
 
+  const state = await getExtensionState();
   const key = cacheKey(tab);
   if (analysisCache.has(key)) {
     lastAnalysis = analysisCache.get(key);
@@ -164,7 +178,12 @@ async function analyzeCurrentPage() {
     return;
   }
 
-  const response = await chrome.tabs.sendMessage(tab.id, { action: "jobmaster:analyze-page" });
+  const response = await chrome.tabs.sendMessage(tab.id, {
+    action: "jobmaster:analyze-page",
+    context: {
+      autofillSettings: state.autofillSettings
+    }
+  });
   if (!response?.ok) {
     throw new Error(response?.error || "Could not analyze the page.");
   }
@@ -215,6 +234,7 @@ document.getElementById("open-options").addEventListener("click", async () => {
 document.getElementById("refresh-analysis").addEventListener("click", async () => {
   try {
     const tab = activeTab ?? (await getActiveTab());
+    lastState = null;
     analysisCache.delete(cacheKey(tab));
     await analyzeCurrentPage();
     popupFlash("Scan refreshed.");
@@ -317,6 +337,7 @@ document.getElementById("autofill-page").addEventListener("click", async () => {
 (async () => {
   try {
     await getActiveTab();
+    await getExtensionState();
     await analyzeCurrentPage();
     await refreshRecentJobs();
     await refreshRecentScans();

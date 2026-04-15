@@ -65,7 +65,7 @@
     { key: "disability_status", patterns: [/disability/], confidence: 0.96 },
     { key: "race_ethnicity", patterns: [/race/, /ethnicity/], confidence: 0.94 },
     { key: "summary", patterns: [/summary/, /about you/, /about yourself/], confidence: 0.78 },
-    { key: "cover_letter_text", patterns: [/cover letter/, /why do you want/, /why are you interested/, /motivation/], confidence: 0.82 },
+    { key: "cover_letter_text", patterns: [/cover letter/, /why do you want/, /why are you interested/, /motivation/], confidence: 0.72 },
     { key: "top_skills", patterns: [/\bskills\b/, /tech stack/, /strengths/], confidence: 0.74 }
   ];
 
@@ -234,6 +234,30 @@
     return "string";
   }
 
+  function compatibilityBoost(field, key) {
+    if (key === "email" && field.htmlType === "email") {
+      return 0.08;
+    }
+    if (key === "tel" && field.htmlType === "tel") {
+      return 0.08;
+    }
+    if (["linkedin_url", "github_url", "website_url"].includes(key) && field.htmlType === "url") {
+      return 0.08;
+    }
+    if (key === "resume_file" && field.kind === "file") {
+      return 0.12;
+    }
+    if (["summary", "cover_letter_text", "top_skills"].includes(key) && field.kind === "textarea") {
+      return 0.05;
+    }
+    if (["work_authorized_us", "requires_sponsorship", "requires_relocation"].includes(key)) {
+      if (field.kind === "radio-group" || field.kind === "checkbox" || field.kind === "select") {
+        return 0.06;
+      }
+    }
+    return 0;
+  }
+
   function candidateForKey(field, key, confidence, source, reason, answerContext) {
     const answer = resolveStructuredAnswer(key, answerContext, field);
     if (!answer) {
@@ -243,7 +267,7 @@
       taxonomyKey: key,
       answer,
       answerType: answerTypeForKey(key),
-      confidence,
+      confidence: Math.min(0.99, confidence + compatibilityBoost(field, key)),
       source,
       reason
     };
@@ -343,7 +367,7 @@
     }
     if (field.kind === "textarea" && entry.answerType === "long_text") {
       best += 0.02;
-      return Math.min(0.84, best);
+      return Math.min(0.79, best);
     }
     if ((field.kind === "radio-group" || field.kind === "select") && entry.answerType === "choice") {
       best += 0.04;
@@ -381,12 +405,12 @@
 
   function thresholdsForMode(mode) {
     if (mode === "aggressive") {
-      return { fill: 0.66, review: 0.45 };
+      return { fill: 0.62, review: 0.42 };
     }
     if (mode === "balanced") {
-      return { fill: 0.76, review: 0.56 };
+      return { fill: 0.72, review: 0.52 };
     }
-    return { fill: 0.86, review: 0.66 };
+    return { fill: 0.8, review: 0.6 };
   }
 
   function compatiblePolicyCandidate(field, candidate) {
