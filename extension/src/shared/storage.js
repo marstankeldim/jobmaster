@@ -12,6 +12,7 @@ import {
 const DB_NAME = "jobmaster-extension-db";
 const FILE_STORE = "files";
 const RESUME_FILE_KEY = "resume";
+const MAX_SCAN_HISTORY = 15;
 
 function deepClone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -127,6 +128,9 @@ export async function ensureDefaults() {
   if (current[STORAGE_KEYS.resumeMeta] === undefined) {
     updates[STORAGE_KEYS.resumeMeta] = null;
   }
+  if (current[STORAGE_KEYS.scanHistory] == null) {
+    updates[STORAGE_KEYS.scanHistory] = [];
+  }
   if (Object.keys(updates).length) {
     await chrome.storage.local.set(updates);
   }
@@ -142,7 +146,8 @@ export async function getState() {
     coverLetterTemplate: current[STORAGE_KEYS.coverLetterTemplate] ?? DEFAULT_COVER_LETTER_TEMPLATE,
     jobs: sortByUpdatedAt(current[STORAGE_KEYS.jobs] ?? []),
     events: sortByUpdatedAt(current[STORAGE_KEYS.events] ?? []),
-    resumeMeta: current[STORAGE_KEYS.resumeMeta] ?? null
+    resumeMeta: current[STORAGE_KEYS.resumeMeta] ?? null,
+    scanHistory: sortByUpdatedAt(current[STORAGE_KEYS.scanHistory] ?? [])
   };
 }
 
@@ -358,6 +363,24 @@ export async function summaryCounts() {
   return counts;
 }
 
+export async function recordScanRun(scanRun) {
+  const state = await getState();
+  const entry = {
+    id: crypto.randomUUID(),
+    created_at: nowIso(),
+    updated_at: nowIso(),
+    ...scanRun
+  };
+  const scanHistory = [entry, ...state.scanHistory].slice(0, MAX_SCAN_HISTORY);
+  await chrome.storage.local.set({ [STORAGE_KEYS.scanHistory]: scanHistory });
+  return entry;
+}
+
+export async function recentScanRuns(limit = 5) {
+  const state = await getState();
+  return state.scanHistory.slice(0, limit);
+}
+
 export async function exportPackage() {
   const state = await getState();
   return {
@@ -370,7 +393,8 @@ export async function exportPackage() {
       coverLetterTemplate: state.coverLetterTemplate,
       jobs: state.jobs,
       events: state.events,
-      resumeMeta: state.resumeMeta
+      resumeMeta: state.resumeMeta,
+      scanHistory: state.scanHistory
     }
   };
 }
@@ -387,6 +411,7 @@ export async function importPackage(packagePayload) {
     [STORAGE_KEYS.coverLetterTemplate]: data.coverLetterTemplate ?? DEFAULT_COVER_LETTER_TEMPLATE,
     [STORAGE_KEYS.jobs]: Array.isArray(data.jobs) ? data.jobs : [],
     [STORAGE_KEYS.events]: Array.isArray(data.events) ? data.events : [],
-    [STORAGE_KEYS.resumeMeta]: data.resumeMeta ?? null
+    [STORAGE_KEYS.resumeMeta]: data.resumeMeta ?? null,
+    [STORAGE_KEYS.scanHistory]: Array.isArray(data.scanHistory) ? data.scanHistory.slice(0, MAX_SCAN_HISTORY) : []
   });
 }

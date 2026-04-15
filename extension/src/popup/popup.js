@@ -31,6 +31,53 @@ function renderRecentJobs(jobs) {
   }
 }
 
+function relativeTime(value) {
+  if (!value) {
+    return "";
+  }
+  const diffMs = Date.now() - new Date(value).getTime();
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 1) {
+    return "just now";
+  }
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
+function renderRecentScans(scans) {
+  const container = document.getElementById("recent-scans");
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  if (!scans.length) {
+    container.textContent = "No scan history yet.";
+    return;
+  }
+  for (const scan of scans) {
+    const item = document.createElement("div");
+    item.className = "jm-job-list-item";
+    const skippedPreview = (scan.skippedLabels || []).slice(0, 2).join(", ");
+    const matchBreakdown = Object.entries(scan.metrics?.matchBreakdown || {})
+      .map(([key, count]) => `${key}:${count}`)
+      .join(" · ");
+    item.innerHTML = `
+      <strong>${scan.platform || "unknown"} · ${scan.jobTitle || "Current page"}</strong>
+      <span>${relativeTime(scan.created_at)} · ${scan.metrics?.scanDurationMs ?? "?"}ms · filled ${scan.metrics?.fieldCountFilled ?? 0}/${scan.metrics?.fieldCountVisible ?? 0}</span>
+      <span>root: ${scan.metrics?.rootSelectorUsed || "document"}${scan.metrics?.stepSelectorUsed ? ` · step: ${scan.metrics.stepSelectorUsed}` : ""}</span>
+      <span>${matchBreakdown || "no matches recorded"}${skippedPreview ? ` · skipped: ${skippedPreview}` : ""}</span>
+    `;
+    container.append(item);
+  }
+}
+
 function setJobField(id, value) {
   document.getElementById(id).textContent = value || "—";
 }
@@ -47,9 +94,11 @@ function setScanMetrics(metrics = {}) {
   node.textContent = [
     metrics.platform ? `platform: ${metrics.platform}` : "",
     metrics.rootSelectorUsed ? `root: ${metrics.rootSelectorUsed}` : "",
+    metrics.stepSelectorUsed ? `step: ${metrics.stepSelectorUsed}` : "",
     Number.isFinite(metrics.scanDurationMs) ? `scan: ${metrics.scanDurationMs}ms` : "",
     Number.isFinite(metrics.fieldCountVisible) ? `visible fields: ${metrics.fieldCountVisible}` : "",
-    Number.isFinite(metrics.fieldCountMatched) ? `matched: ${metrics.fieldCountMatched}` : ""
+    Number.isFinite(metrics.fieldCountMatched) ? `matched: ${metrics.fieldCountMatched}` : "",
+    metrics.cacheHit ? "cached scan" : ""
   ]
     .filter(Boolean)
     .join(" · ");
@@ -115,6 +164,13 @@ async function refreshRecentJobs() {
   const response = await callExtension("jobmaster:recent-jobs", { limit: 5 });
   if (response.ok) {
     renderRecentJobs(response.jobs);
+  }
+}
+
+async function refreshRecentScans() {
+  const response = await callExtension("jobmaster:recent-scan-runs", { limit: 4 });
+  if (response.ok) {
+    renderRecentScans(response.scans);
   }
 }
 
@@ -190,8 +246,9 @@ document.getElementById("generate-cover-letter").addEventListener("click", async
 document.getElementById("autofill-page").addEventListener("click", async () => {
   try {
     await analyzeCurrentPage();
+    const job = inferredJobFromAnalysis();
     const contextResponse = await callExtension("jobmaster:build-autofill-context", {
-      job: inferredJobFromAnalysis()
+      job
     });
     if (!contextResponse.ok) {
       throw new Error(contextResponse.error);
@@ -204,6 +261,18 @@ document.getElementById("autofill-page").addEventListener("click", async () => {
       throw new Error(response?.error || "Autofill failed.");
     }
     setScanMetrics(response.result.metrics);
+    await callExtension("jobmaster:record-scan-run", {
+      scanRun: {
+        platform: response.result.metrics?.platform || lastAnalysis?.platform || "unknown",
+        tabUrl: activeTab?.url || "",
+        jobTitle: job.title || "",
+        company: job.company || "",
+        metrics: response.result.metrics || {},
+        skippedLabels: response.result.skipped.slice(0, 5),
+        classifiedPreview: (response.result.classified || []).slice(0, 5)
+      }
+    });
+    await refreshRecentScans();
     popupFlash(`Filled ${response.result.filled.length} fields and skipped ${response.result.skipped.length}.`);
   } catch (error) {
     popupFlash(error.message || "Could not autofill page.", true);
@@ -215,8 +284,10 @@ document.getElementById("autofill-page").addEventListener("click", async () => {
     await getActiveTab();
     await analyzeCurrentPage();
     await refreshRecentJobs();
+    await refreshRecentScans();
   } catch (error) {
     popupFlash(error.message || "Page analysis unavailable.", true);
     await refreshRecentJobs();
+    await refreshRecentScans();
   }
 })();

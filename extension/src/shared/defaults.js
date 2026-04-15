@@ -19,7 +19,8 @@ export const STORAGE_KEYS = {
   coverLetterTemplate: "jm.coverLetterTemplate",
   jobs: "jm.jobs",
   events: "jm.events",
-  resumeMeta: "jm.resumeMeta"
+  resumeMeta: "jm.resumeMeta",
+  scanHistory: "jm.scanHistory"
 };
 
 export const DEFAULT_PROFILE = {
@@ -212,6 +213,7 @@ export function createDefaultState() {
     coverLetterTemplate: DEFAULT_COVER_LETTER_TEMPLATE,
     jobs: [],
     events: [],
-    resumeMeta: null
+    resumeMeta: null,
+    scanHistory: []
   };
 }

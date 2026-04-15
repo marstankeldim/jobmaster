@@ -15,6 +15,8 @@ import {
   getResumeAsset,
   getState,
   importPackage,
+  recordScanRun,
+  recentScanRuns,
   recentJobs,
   saveAnswers,
   saveCandidateSources,
@@ -135,6 +137,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
       case "jobmaster:recent-jobs":
         sendResponse({ ok: true, jobs: await recentJobs(payload.limit ?? 6) });
+        break;
+
+      case "jobmaster:record-scan-run": {
+        const entry = await recordScanRun(payload.scanRun ?? {});
+        sendResponse({ ok: true, entry });
+        break;
+      }
+
+      case "jobmaster:recent-scan-runs":
+        sendResponse({ ok: true, scans: await recentScanRuns(payload.limit ?? 5) });
         break;
 
       case "jobmaster:generate-cover-letter": {
