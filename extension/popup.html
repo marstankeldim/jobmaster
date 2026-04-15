@@ -13,7 +13,10 @@
         <p class="jm-eyebrow">Active Tab</p>
         <h1>Jobmaster</h1>
       </div>
-      <button id="open-options" class="jm-button jm-button-secondary">Settings</button>
+      <div class="jm-button-row">
+        <button id="refresh-analysis" class="jm-button jm-button-ghost">Refresh</button>
+        <button id="open-options" class="jm-button jm-button-secondary">Settings</button>
+      </div>
     </header>
 
     <section class="jm-card">
@@ -34,6 +37,7 @@
         <button id="autofill-page" class="jm-button">Autofill Page</button>
         <button id="generate-cover-letter" class="jm-button jm-button-secondary">Generate Cover Letter</button>
       </div>
+      <p id="scan-metrics" class="jm-inline-note"></p>
     </section>
 
     <section class="jm-card">
@@ -57,4 +61,3 @@
   <script type="module" src="src/popup/popup.js"></script>
 </body>
 </html>
-

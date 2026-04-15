@@ -1,6 +1,47 @@
 (function attachAutofill(globalScope) {
   const YES_WORDS = new Set(["yes", "true", "1"]);
   const NO_WORDS = new Set(["no", "false", "0"]);
+  const FIELD_TAXONOMY_RULES = [
+    { key: "full_name", pattern: /full.?name|your name|applicant name|legal name/ },
+    { key: "preferred_name", pattern: /preferred name|nickname/ },
+    { key: "email", pattern: /email|e-mail/ },
+    { key: "phone", pattern: /phone|mobile|cell/ },
+    { key: "address_line_1", pattern: /address line 1|street address|mailing address/ },
+    { key: "address_line_2", pattern: /address line 2|apartment|suite|unit/ },
+    { key: "city", pattern: /\bcity\b/ },
+    { key: "state_region", pattern: /state|province|region/ },
+    { key: "postal_code", pattern: /zip|postal code/ },
+    { key: "country", pattern: /country/ },
+    { key: "location", pattern: /city state|location/ },
+    { key: "linkedin", pattern: /linkedin/ },
+    { key: "github", pattern: /github/ },
+    { key: "website", pattern: /portfolio|website|personal site/ },
+    { key: "resume", pattern: /resume|cv/ },
+    { key: "work_authorization", pattern: /work authorization|authorized to work|eligible to work/ },
+    { key: "sponsorship", pattern: /sponsorship|visa/ },
+    { key: "requires_relocation", pattern: /relocation|willing to relocate/ },
+    { key: "citizenship", pattern: /citizenship|citizen/ },
+    { key: "security_clearance", pattern: /clearance|security clearance/ },
+    { key: "notice_period", pattern: /notice period/ },
+    { key: "current_title", pattern: /current title|job title|present title/ },
+    { key: "current_company", pattern: /current company|employer/ },
+    { key: "years_experience", pattern: /years of experience|experience in years/ },
+    { key: "highest_degree", pattern: /degree|highest degree|education level/ },
+    { key: "school", pattern: /school|university|college/ },
+    { key: "graduation_date", pattern: /graduation|grad date/ },
+    { key: "salary_expectation", pattern: /salary|compensation|pay expectation/ },
+    { key: "available_start_date", pattern: /start date|available to start|availability/ },
+    { key: "preferred_workplace", pattern: /remote|hybrid|onsite|work arrangement/ },
+    { key: "languages_spoken", pattern: /language|languages spoken/ },
+    { key: "pronouns", pattern: /pronouns/ },
+    { key: "gender", pattern: /gender/ },
+    { key: "veteran_status", pattern: /veteran/ },
+    { key: "disability_status", pattern: /disability/ },
+    { key: "race_ethnicity", pattern: /ethnicity|race/ },
+    { key: "summary", pattern: /summary|about you|about yourself/ },
+    { key: "top_skills", pattern: /skills|tech stack|strengths/ },
+    { key: "cover_letter", pattern: /cover letter/ }
+  ];
 
   function normalize(value) {
     return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -10,21 +51,56 @@
     return String(value || "").replace(/\s+/g, " ").trim();
   }
 
+  function isPotentiallyRelevant(element) {
+    if (!element || element.disabled || element.hidden) {
+      return false;
+    }
+    if (element.closest("[hidden],[aria-hidden='true']")) {
+      return false;
+    }
+    const type = (element.getAttribute("type") || "").toLowerCase();
+    if (type === "hidden") {
+      return false;
+    }
+    return true;
+  }
+
   function isVisible(element) {
     const style = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
     return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
   }
 
-  function getFieldLabel(element) {
-    const chunks = [];
-    if (element.labels) {
-      for (const label of element.labels) {
-        chunks.push(cleanText(label.innerText));
+  function buildLabelIndex(root = document) {
+    const index = new Map();
+    for (const label of root.querySelectorAll("label")) {
+      const text = cleanText(label.innerText);
+      if (!text) {
+        continue;
+      }
+      const htmlFor = label.getAttribute("for");
+      if (htmlFor) {
+        const list = index.get(htmlFor) || [];
+        list.push(text);
+        index.set(htmlFor, list);
+      }
+      const nestedControl = label.querySelector("input, textarea, select");
+      if (nestedControl?.id) {
+        const list = index.get(nestedControl.id) || [];
+        list.push(text);
+        index.set(nestedControl.id, list);
       }
     }
-    if (element.id) {
-      for (const label of document.querySelectorAll(`label[for="${CSS.escape(element.id)}"]`)) {
+    return index;
+  }
+
+  function getFieldLabel(element, labelIndex) {
+    const chunks = [];
+    if (element.id && labelIndex.has(element.id)) {
+      chunks.push(...labelIndex.get(element.id));
+    }
+    if (element.labels) {
+      for (const label of element.labels) {
         chunks.push(cleanText(label.innerText));
       }
     }
@@ -42,10 +118,88 @@
     return [...new Set(chunks.filter(Boolean))].join(" | ");
   }
 
-  function scanFields(root = document) {
-    return [...root.querySelectorAll("input, textarea, select")]
-      .filter((element) => isVisible(element) && !element.disabled)
-      .map((element) => ({
+  function profileTaxonomyAnswers(profile, coverLetter) {
+    return {
+      full_name: profile.full_name,
+      preferred_name: profile.preferred_name || profile.full_name,
+      email: profile.email,
+      phone: profile.phone,
+      address_line_1: profile.address_line_1 || profile.location,
+      address_line_2: profile.address_line_2,
+      city: profile.city || profile.location,
+      state_region: profile.state_region,
+      postal_code: profile.postal_code,
+      country: profile.country,
+      location: profile.location,
+      linkedin: profile.linkedin,
+      github: profile.github,
+      website: profile.portfolio || profile.personal_website || profile.github,
+      resume: profile.resume_path,
+      work_authorization: profile.work_authorization,
+      sponsorship: profile.sponsorship_needed,
+      requires_relocation: profile.requires_relocation,
+      citizenship: profile.citizenship,
+      security_clearance: profile.security_clearance,
+      notice_period: profile.notice_period,
+      current_title: profile.current_title,
+      current_company: profile.current_company,
+      years_experience: profile.years_experience,
+      highest_degree: profile.highest_degree,
+      school: profile.school,
+      graduation_date: profile.graduation_date,
+      salary_expectation: profile.salary_expectation,
+      available_start_date: profile.available_start_date,
+      preferred_workplace: profile.preferred_workplace,
+      languages_spoken: profile.languages_spoken,
+      pronouns: profile.pronouns,
+      gender: profile.gender,
+      veteran_status: profile.veteran_status,
+      disability_status: profile.disability_status,
+      race_ethnicity: profile.race_ethnicity,
+      summary: profile.summary,
+      top_skills: profile.top_skills,
+      cover_letter: coverLetter
+    };
+  }
+
+  function classifyField(field) {
+    const text = normalize(
+      [
+        field.labelText,
+        field.name,
+        field.placeholder,
+        field.ariaLabel,
+        field.autocomplete,
+        field.id
+      ].join(" ")
+    );
+    if (!text) {
+      return { taxonomyKey: null, confidence: 0 };
+    }
+    for (const rule of FIELD_TAXONOMY_RULES) {
+      if (rule.pattern.test(text)) {
+        return { taxonomyKey: rule.key, confidence: 0.95 };
+      }
+    }
+    if (field.type === "email") {
+      return { taxonomyKey: "email", confidence: 0.9 };
+    }
+    if (field.type === "tel") {
+      return { taxonomyKey: "phone", confidence: 0.9 };
+    }
+    if (field.type === "file") {
+      return { taxonomyKey: "resume", confidence: 0.95 };
+    }
+    return { taxonomyKey: null, confidence: 0 };
+  }
+
+  function scanFields(root = document, labelIndex = new Map()) {
+    const rawFields = [...root.querySelectorAll("input, textarea, select")];
+    const potentialFields = rawFields.filter(isPotentiallyRelevant);
+    const visibleFields = potentialFields.filter(isVisible);
+
+    const scannedFields = visibleFields.map((element) => {
+      const baseField = {
         element,
         tag: element.tagName.toLowerCase(),
         type: (element.getAttribute("type") || "").toLowerCase(),
@@ -54,7 +208,7 @@
         placeholder: element.getAttribute("placeholder") || "",
         ariaLabel: element.getAttribute("aria-label") || "",
         autocomplete: element.getAttribute("autocomplete") || "",
-        labelText: getFieldLabel(element),
+        labelText: getFieldLabel(element, labelIndex),
         options:
           element.tagName.toLowerCase() === "select"
             ? [...element.options].map((option) => ({
@@ -62,55 +216,24 @@
                 value: option.value || ""
               }))
             : []
-      }));
-  }
+      };
+      const classification = classifyField(baseField);
+      return { ...baseField, ...classification };
+    });
 
-  function profileAnswerMap(profile, coverLetter) {
-    return [
-      [/full.?name|your name|applicant name|legal name/, profile.full_name],
-      [/preferred name|nickname/, profile.preferred_name || profile.full_name],
-      [/email|e-mail/, profile.email],
-      [/phone|mobile|cell/, profile.phone],
-      [/address line 1|street address|address/, profile.address_line_1 || profile.location],
-      [/address line 2|apartment|suite|unit/, profile.address_line_2],
-      [/city/, profile.city || profile.location],
-      [/state|province|region/, profile.state_region],
-      [/zip|postal code/, profile.postal_code],
-      [/country/, profile.country],
-      [/city state|location/, profile.location],
-      [/linkedin/, profile.linkedin],
-      [/github/, profile.github],
-      [/portfolio|website|personal site/, profile.portfolio || profile.personal_website || profile.github],
-      [/resume|cv/, profile.resume_path],
-      [/work authorization|authorized to work|eligible to work/, profile.work_authorization],
-      [/sponsorship|visa/, profile.sponsorship_needed],
-      [/relocation|willing to relocate/, profile.requires_relocation],
-      [/citizenship|citizen/, profile.citizenship],
-      [/clearance|security clearance/, profile.security_clearance],
-      [/notice period/, profile.notice_period],
-      [/current title|job title|present title/, profile.current_title],
-      [/current company|employer/, profile.current_company],
-      [/years of experience|experience in years/, profile.years_experience],
-      [/degree|highest degree|education level/, profile.highest_degree],
-      [/school|university|college/, profile.school],
-      [/graduation|grad date/, profile.graduation_date],
-      [/salary|compensation|pay expectation/, profile.salary_expectation],
-      [/start date|available to start|notice period|availability/, profile.available_start_date],
-      [/remote|hybrid|onsite|work arrangement/, profile.preferred_workplace],
-      [/language|languages spoken/, profile.languages_spoken],
-      [/pronouns/, profile.pronouns],
-      [/gender/, profile.gender],
-      [/veteran/, profile.veteran_status],
-      [/disability/, profile.disability_status],
-      [/ethnicity|race/, profile.race_ethnicity],
-      [/summary|about you|about yourself/, profile.summary],
-      [/skills|tech stack|strengths/, profile.top_skills],
-      [/cover letter/, coverLetter]
-    ];
+    return {
+      fields: scannedFields,
+      metrics: {
+        fieldCountRaw: rawFields.length,
+        fieldCountPotential: potentialFields.length,
+        fieldCountVisible: visibleFields.length
+      }
+    };
   }
 
   function customAnswerMatch(fieldText, answersData) {
     const normalizedField = normalize(fieldText);
+    const fieldTokens = normalizedField.split(" ");
     let best = null;
     for (const item of answersData.answers || []) {
       const candidates = [item.question, ...(item.aliases || [])];
@@ -123,9 +246,7 @@
         if (normalizedField.includes(normalizedCandidate)) {
           score = Math.max(score, normalizedCandidate.length);
         } else {
-          const overlap = normalizedCandidate
-            .split(" ")
-            .filter((token) => normalizedField.split(" ").includes(token)).length;
+          const overlap = normalizedCandidate.split(" ").filter((token) => fieldTokens.includes(token)).length;
           score = Math.max(score, overlap * 5);
         }
       }
@@ -163,35 +284,24 @@
   }
 
   function chooseAnswer(field, profile, answersData, coverLetter) {
-    const fieldText = [
-      field.labelText,
-      field.name,
-      field.placeholder,
-      field.ariaLabel,
-      field.autocomplete,
-      field.id
-    ]
+    const fieldText = [field.labelText, field.name, field.placeholder, field.ariaLabel, field.autocomplete, field.id]
       .map(cleanText)
       .join(" ");
-    const normalizedField = normalize(fieldText);
-    if (!normalizedField) {
-      return null;
+    const taxonomyAnswers = profileTaxonomyAnswers(profile, coverLetter);
+
+    if (field.taxonomyKey && taxonomyAnswers[field.taxonomyKey]) {
+      return {
+        answer: String(taxonomyAnswers[field.taxonomyKey]),
+        reason: `taxonomy match: ${field.taxonomyKey}`,
+        confidence: field.confidence ?? 0.95
+      };
     }
-    if (field.type === "file" && profile.resume_path) {
-      return { answer: profile.resume_path, reason: "resume upload" };
-    }
+
     const custom = customAnswerMatch(fieldText, answersData);
     if (custom) {
       return custom;
     }
-    if (field.tag === "textarea" && normalizedField.includes("cover letter")) {
-      return { answer: coverLetter, reason: "cover letter field" };
-    }
-    for (const [pattern, value] of profileAnswerMap(profile, coverLetter)) {
-      if (value && pattern.test(normalizedField)) {
-        return { answer: String(value), reason: `profile match: ${pattern}` };
-      }
-    }
+
     if (field.type === "email" && profile.email) {
       return { answer: profile.email, reason: "email input" };
     }
@@ -274,14 +384,29 @@
     setTimeout(() => toast.remove(), 4500);
   }
 
+  function resolveRootMatch() {
+    const adapter = globalScope.JobmasterPlatforms.detectPlatform(window.location);
+    return globalScope.JobmasterPlatforms.resolveApplicationRoot(adapter, document);
+  }
+
   async function runAutofill(context) {
-    const fields = scanFields(document);
+    const startedAt = performance.now();
+    const rootMatch = resolveRootMatch();
+    const labelIndex = buildLabelIndex(rootMatch.node);
+    const { fields, metrics } = scanFields(rootMatch.node, labelIndex);
     const filled = [];
     const skipped = [];
+    const classified = [];
 
     for (const field of fields) {
       const candidate = chooseAnswer(field, context.profile, context.answers, context.coverLetterText);
       const label = field.labelText || field.name || field.id || field.placeholder || "<unnamed>";
+      classified.push({
+        label,
+        taxonomyKey: field.taxonomyKey,
+        confidence: field.confidence ?? 0,
+        matched: Boolean(candidate)
+      });
       if (!candidate || !String(candidate.answer).trim()) {
         skipped.push(label);
         continue;
@@ -347,7 +472,19 @@
       }
     }
 
-    const result = { filled, skipped };
+    const result = {
+      filled,
+      skipped,
+      metrics: {
+        ...metrics,
+        platform: globalScope.JobmasterPlatforms.detectPlatform(window.location).name,
+        rootSelectorUsed: rootMatch.selector,
+        fieldCountMatched: classified.filter((item) => item.matched).length,
+        fieldCountClassified: classified.filter((item) => item.taxonomyKey).length,
+        scanDurationMs: Math.round(performance.now() - startedAt)
+      },
+      classified
+    };
     showToast(result);
     return result;
   }

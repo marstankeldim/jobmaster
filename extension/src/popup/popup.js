@@ -3,6 +3,7 @@ import { callExtension } from "../shared/client.js";
 let activeTab = null;
 let lastAnalysis = null;
 let lastSavedJob = null;
+const analysisCache = new Map();
 
 function popupFlash(message, isError = false) {
   const node = document.getElementById("popup-flash");
@@ -34,6 +35,26 @@ function setJobField(id, value) {
   document.getElementById(id).textContent = value || "—";
 }
 
+function cacheKey(tab) {
+  return `${tab?.id || "unknown"}:${tab?.url || ""}`;
+}
+
+function setScanMetrics(metrics = {}) {
+  const node = document.getElementById("scan-metrics");
+  if (!node) {
+    return;
+  }
+  node.textContent = [
+    metrics.platform ? `platform: ${metrics.platform}` : "",
+    metrics.rootSelectorUsed ? `root: ${metrics.rootSelectorUsed}` : "",
+    Number.isFinite(metrics.scanDurationMs) ? `scan: ${metrics.scanDurationMs}ms` : "",
+    Number.isFinite(metrics.fieldCountVisible) ? `visible fields: ${metrics.fieldCountVisible}` : "",
+    Number.isFinite(metrics.fieldCountMatched) ? `matched: ${metrics.fieldCountMatched}` : ""
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 async function getActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   activeTab = tab ?? null;
@@ -45,16 +66,33 @@ async function analyzeCurrentPage() {
   if (!tab?.id || !/^https?:/i.test(tab.url || "")) {
     throw new Error("This page does not allow extension automation.");
   }
+
+  const key = cacheKey(tab);
+  if (analysisCache.has(key)) {
+    lastAnalysis = analysisCache.get(key);
+    const currentJob = lastAnalysis.job || {};
+    setJobField("job-company", currentJob.company);
+    setJobField("job-title", currentJob.title);
+    setJobField("job-location", currentJob.location);
+    document.getElementById("platform-label").textContent = `${lastAnalysis.platform} · ${lastAnalysis.applicationFormDetected ? "application form detected" : "metadata only"}`;
+    setScanMetrics(lastAnalysis.metrics || lastAnalysis);
+    const findResponse = await callExtension("jobmaster:find-job-by-url", { jobUrl: tab.url || currentJob.job_url || "" });
+    lastSavedJob = findResponse.ok ? findResponse.job : null;
+    return;
+  }
+
   const response = await chrome.tabs.sendMessage(tab.id, { action: "jobmaster:analyze-page" });
   if (!response?.ok) {
     throw new Error(response?.error || "Could not analyze the page.");
   }
   lastAnalysis = response.analysis;
+  analysisCache.set(key, response.analysis);
   const currentJob = response.analysis.job || {};
   setJobField("job-company", currentJob.company);
   setJobField("job-title", currentJob.title);
   setJobField("job-location", currentJob.location);
   document.getElementById("platform-label").textContent = `${response.analysis.platform} · ${response.analysis.applicationFormDetected ? "application form detected" : "metadata only"}`;
+  setScanMetrics(response.analysis.metrics || response.analysis);
 
   const findResponse = await callExtension("jobmaster:find-job-by-url", { jobUrl: tab.url || currentJob.job_url || "" });
   lastSavedJob = findResponse.ok ? findResponse.job : null;
@@ -82,6 +120,17 @@ async function refreshRecentJobs() {
 
 document.getElementById("open-options").addEventListener("click", async () => {
   await callExtension("jobmaster:open-options");
+});
+
+document.getElementById("refresh-analysis").addEventListener("click", async () => {
+  try {
+    const tab = activeTab ?? (await getActiveTab());
+    analysisCache.delete(cacheKey(tab));
+    await analyzeCurrentPage();
+    popupFlash("Scan refreshed.");
+  } catch (error) {
+    popupFlash(error.message || "Could not refresh scan.", true);
+  }
 });
 
 document.getElementById("save-job").addEventListener("click", async () => {
@@ -154,6 +203,7 @@ document.getElementById("autofill-page").addEventListener("click", async () => {
     if (!response?.ok) {
       throw new Error(response?.error || "Autofill failed.");
     }
+    setScanMetrics(response.result.metrics);
     popupFlash(`Filled ${response.result.filled.length} fields and skipped ${response.result.skipped.length}.`);
   } catch (error) {
     popupFlash(error.message || "Could not autofill page.", true);
@@ -170,4 +220,3 @@ document.getElementById("autofill-page").addEventListener("click", async () => {
     await refreshRecentJobs();
   }
 })();
-
