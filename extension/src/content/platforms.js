@@ -84,9 +84,33 @@
         });
       }
     }
+
+    function containerScore(candidate) {
+      const selectorBonus =
+        /form/i.test(candidate.selector) ? 16 :
+        /step|panel|grouping|questionnaire|dialog/i.test(candidate.selector) ? 12 :
+        /section|main/i.test(candidate.selector) ? 6 :
+        0;
+      const fieldCountScore =
+        candidate.fieldCount >= 3 && candidate.fieldCount <= 40
+          ? 30
+          : candidate.fieldCount === 2
+            ? 18
+            : candidate.fieldCount === 1
+              ? 6
+              : candidate.fieldCount > 40
+                ? Math.max(8, 30 - Math.floor((candidate.fieldCount - 40) / 5))
+                : 0;
+      return selectorBonus + fieldCountScore + candidate.depth * 1.5;
+    }
+
     candidates.sort((left, right) => {
-      if (left.fieldCount !== right.fieldCount) {
-        return left.fieldCount - right.fieldCount;
+      const scoreDelta = containerScore(right) - containerScore(left);
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+      if (right.fieldCount !== left.fieldCount) {
+        return right.fieldCount - left.fieldCount;
       }
       return right.depth - left.depth;
     });

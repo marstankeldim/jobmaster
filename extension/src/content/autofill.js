@@ -418,13 +418,44 @@
 
   function buildScanSnapshot(scanTarget) {
     const helpers = makeCollectHelpers(scanTarget.adapter);
-    const snapshot = scanTarget.adapter.collectFields(scanTarget.stepMatch.node, helpers);
+    const triedScopes = [];
+
+    function collectScope(node, selector) {
+      const snapshot = scanTarget.adapter.collectFields(node, helpers);
+      triedScopes.push({
+        selector,
+        fieldCountVisible: snapshot.metrics?.fieldCountVisible ?? 0
+      });
+      return {
+        ...snapshot,
+        activeSelector: selector
+      };
+    }
+
+    let snapshot = collectScope(scanTarget.stepMatch.node, scanTarget.stepMatch.selector);
+    if (
+      (snapshot.metrics?.fieldCountVisible ?? 0) === 0 &&
+      scanTarget.rootMatch.node !== scanTarget.stepMatch.node
+    ) {
+      snapshot = collectScope(scanTarget.rootMatch.node, scanTarget.rootMatch.selector);
+    }
+    if (
+      (snapshot.metrics?.fieldCountVisible ?? 0) === 0 &&
+      scanTarget.rootMatch.node !== document
+    ) {
+      snapshot = collectScope(document, "document");
+    }
+
     return {
       ...snapshot,
       rootNode: scanTarget.rootMatch.node,
-      stepNode: scanTarget.stepMatch.node,
+      stepNode:
+        snapshot.activeSelector === scanTarget.stepMatch.selector ? scanTarget.stepMatch.node :
+        snapshot.activeSelector === scanTarget.rootMatch.selector ? scanTarget.rootMatch.node :
+        document,
       rootSelectorUsed: scanTarget.rootMatch.selector,
-      stepSelectorUsed: scanTarget.stepMatch.selector,
+      stepSelectorUsed: snapshot.activeSelector,
+      attemptedScopes: triedScopes,
       submissionState: scanTarget.adapter.detectSubmissionState(document)
     };
   }
@@ -839,7 +870,8 @@
         scanDurationMs: Math.round(performance.now() - startedAt),
         cacheHit: snapshot.cacheHit,
         rootSelectorUsed: snapshot.rootSelectorUsed,
-        stepSelectorUsed: snapshot.stepSelectorUsed
+        stepSelectorUsed: snapshot.stepSelectorUsed,
+        attemptedScopes: snapshot.attemptedScopes
       }
     };
     return summarizeScan(session);
@@ -920,6 +952,7 @@
         platform: scanTarget.adapter.name,
         rootSelectorUsed: scanSnapshot.rootSelectorUsed,
         stepSelectorUsed: scanSnapshot.stepSelectorUsed,
+        attemptedScopes: scanSnapshot.attemptedScopes,
         submissionState: scanSnapshot.submissionState,
         fieldCountMatched: matches.filter((item) => item.decision !== "skip" || item.source).length,
         fieldCountReview: review.length,
