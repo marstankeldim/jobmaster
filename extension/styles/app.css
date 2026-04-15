@@ -1,0 +1,281 @@
+:root {
+  --bg: #f4efe7;
+  --bg-strong: #ebdfcf;
+  --surface: rgba(255, 251, 245, 0.92);
+  --ink: #162321;
+  --muted: #5a665f;
+  --line: rgba(22, 35, 33, 0.12);
+  --accent: #a5482c;
+  --accent-soft: #d48158;
+  --accent-alt: #2f6c5f;
+  --shadow: 0 18px 40px rgba(51, 39, 21, 0.12);
+  --radius: 22px;
+  --font-body: "Avenir Next", "Segoe UI", sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  background:
+    radial-gradient(circle at top left, rgba(165, 72, 44, 0.12), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(47, 108, 95, 0.14), transparent 24%),
+    linear-gradient(180deg, #faf6f1 0%, var(--bg) 100%);
+}
+
+.jm-body {
+  min-height: 100vh;
+}
+
+.jm-shell {
+  width: min(1220px, calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 2rem 0 3rem;
+}
+
+.jm-options .jm-hero,
+.jm-card,
+.jm-flash,
+.jm-toast {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.jm-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.jm-eyebrow {
+  margin: 0 0 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-family: var(--font-display);
+}
+
+h1 {
+  font-size: clamp(2rem, 4vw, 3.5rem);
+}
+
+h2 {
+  font-size: 1.55rem;
+}
+
+.jm-copy,
+.jm-card-head p,
+.jm-inline-note,
+.jm-definition-list dt,
+.jm-flash {
+  color: var(--muted);
+}
+
+.jm-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.jm-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.jm-card {
+  padding: 1.25rem;
+}
+
+.jm-card-head {
+  display: grid;
+  gap: 0.3rem;
+  margin-bottom: 1rem;
+}
+
+.jm-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.jm-span-2,
+.jm-span-all {
+  grid-column: 1 / -1;
+}
+
+.jm-stack {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.jm-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+label {
+  display: grid;
+  gap: 0.45rem;
+  font-size: 0.95rem;
+}
+
+input,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+textarea {
+  width: 100%;
+  padding: 0.85rem 0.95rem;
+  border-radius: 16px;
+  border: 1px solid rgba(22, 35, 33, 0.14);
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ink);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+.jm-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.85rem 1.15rem;
+  background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.jm-button-secondary {
+  background: linear-gradient(135deg, var(--accent-alt), #5f998b);
+}
+
+.jm-button-ghost {
+  background: rgba(22, 35, 33, 0.08);
+  color: var(--ink);
+}
+
+.jm-button:hover {
+  transform: translateY(-1px);
+}
+
+.jm-flash {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+}
+
+.jm-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.8rem;
+}
+
+.jm-stat {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.jm-stat strong {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 1.65rem;
+  font-family: var(--font-display);
+}
+
+.jm-popup-body {
+  min-width: 390px;
+}
+
+.jm-popup {
+  padding: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.jm-popup-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.jm-definition-list {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0 0 1rem;
+}
+
+.jm-definition-list div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.jm-definition-list dt {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.jm-definition-list dd {
+  margin: 0;
+}
+
+.jm-preview {
+  margin: 0;
+  padding: 1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.jm-job-list-item {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 0.8rem 0.9rem;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.jm-job-list-item strong {
+  display: block;
+}
+
+.jm-job-list-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 860px) {
+  .jm-hero,
+  .jm-grid-2,
+  .jm-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

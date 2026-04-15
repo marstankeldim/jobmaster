@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jobmaster Settings</title>
+  <link rel="stylesheet" href="styles/app.css">
+</head>
+<body class="jm-body">
+  <main class="jm-shell jm-options">
+    <header class="jm-hero">
+      <div>
+        <p class="jm-eyebrow">Chrome Extension Settings</p>
+        <h1>Jobmaster</h1>
+        <p class="jm-copy">Everything from the Python settings page now lives here: profile, resume, recruiter answers, candidate source data, summary generation, cover-letter template, and imports/exports.</p>
+      </div>
+      <div class="jm-actions">
+        <button id="export-package" class="jm-button">Export Package</button>
+        <label class="jm-button jm-button-secondary">
+          Import Package
+          <input id="import-package" type="file" accept="application/json" hidden>
+        </label>
+      </div>
+    </header>
+
+    <section class="jm-grid jm-grid-2">
+      <article class="jm-card">
+        <div class="jm-card-head">
+          <h2>Profile</h2>
+          <p>Core candidate details the extension uses everywhere.</p>
+        </div>
+        <form id="profile-form" class="jm-form-grid">
+          <label>Full name<input name="full_name" type="text"></label>
+          <label>Email<input name="email" type="email"></label>
+          <label>Phone<input name="phone" type="text"></label>
+          <label>Location<input name="location" type="text"></label>
+          <label>LinkedIn<input name="linkedin" type="url"></label>
+          <label>GitHub<input name="github" type="url"></label>
+          <label>Portfolio<input name="portfolio" type="url"></label>
+          <label>Work authorization<input name="work_authorization" type="text"></label>
+          <label>Sponsorship needed<input name="sponsorship_needed" type="text"></label>
+          <label>Salary expectation<input name="salary_expectation" type="text"></label>
+          <label>Available start date<input name="available_start_date" type="text"></label>
+          <label>Preferred workplace<input name="preferred_workplace" type="text"></label>
+          <label class="jm-span-2">Top skills<input name="top_skills" type="text"></label>
+          <label class="jm-span-2">Professional summary<textarea name="summary" rows="6"></textarea></label>
+          <div class="jm-button-row jm-span-2">
+            <button type="submit" class="jm-button">Save Profile</button>
+            <button type="button" id="generate-summary" class="jm-button jm-button-secondary">Generate Professional Summary</button>
+          </div>
+        </form>
+      </article>
+
+      <article class="jm-card">
+        <div class="jm-card-head">
+          <h2>Resume</h2>
+          <p>Store a browser-owned resume file for autofill and keep helpful resume notes.</p>
+        </div>
+        <div class="jm-stack">
+          <div id="resume-status" class="jm-inline-note"></div>
+          <label class="jm-button jm-button-secondary">
+            Upload Resume
+            <input id="resume-upload" type="file" accept=".pdf,.doc,.docx,.txt,.rtf" hidden>
+          </label>
+          <button id="clear-resume" class="jm-button jm-button-ghost" type="button">Clear Resume</button>
+        </div>
+      </article>
+
+      <article class="jm-card">
+        <div class="jm-card-head">
+          <h2>Recruiter Answers</h2>
+          <p>JSON answer bank for common application questions.</p>
+        </div>
+        <form id="answers-form" class="jm-stack">
+          <textarea id="answers-json" rows="16" spellcheck="false"></textarea>
+          <button type="submit" class="jm-button">Save Answer Bank</button>
+        </form>
+      </article>
+
+      <article class="jm-card">
+        <div class="jm-card-head">
+          <h2>Candidate Source Data</h2>
+          <p>Store every useful signal: GitHub, LinkedIn notes, resume bullets, education, project highlights, preferences, and recruiter context.</p>
+        </div>
+        <form id="candidate-sources-form" class="jm-stack">
+          <textarea id="candidate-sources-json" rows="16" spellcheck="false"></textarea>
+          <button type="submit" class="jm-button">Save Candidate Source Data</button>
+        </form>
+      </article>
+
+      <article class="jm-card jm-span-all">
+        <div class="jm-card-head">
+          <h2>LaTeX Cover Letter Template</h2>
+          <p>Stored as LaTeX and rendered against the current job plus profile fields.</p>
+        </div>
+        <form id="template-form" class="jm-stack">
+          <textarea id="cover-letter-template" rows="20" spellcheck="false"></textarea>
+          <button type="submit" class="jm-button">Save Template</button>
+        </form>
+      </article>
+
+      <article class="jm-card jm-span-all">
+        <div class="jm-card-head">
+          <h2>Tracker Snapshot</h2>
+          <p>Quick counts from the extension-local job tracker.</p>
+        </div>
+        <div id="tracker-summary" class="jm-stats"></div>
+      </article>
+    </section>
+
+    <p id="flash" class="jm-flash" hidden></p>
+  </main>
+  <script type="module" src="src/options/options.js"></script>
+</body>
+</html>
+

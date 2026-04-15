@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jobmaster</title>
+  <link rel="stylesheet" href="styles/app.css">
+</head>
+<body class="jm-popup-body">
+  <main class="jm-popup">
+    <header class="jm-popup-head">
+      <div>
+        <p class="jm-eyebrow">Active Tab</p>
+        <h1>Jobmaster</h1>
+      </div>
+      <button id="open-options" class="jm-button jm-button-secondary">Settings</button>
+    </header>
+
+    <section class="jm-card">
+      <div class="jm-card-head">
+        <h2>Job Detection</h2>
+        <p id="platform-label">Scanning page…</p>
+      </div>
+      <dl class="jm-definition-list">
+        <div><dt>Company</dt><dd id="job-company">—</dd></div>
+        <div><dt>Role</dt><dd id="job-title">—</dd></div>
+        <div><dt>Location</dt><dd id="job-location">—</dd></div>
+      </dl>
+      <div class="jm-button-row">
+        <button id="save-job" class="jm-button">Save Job</button>
+        <button id="mark-submitted" class="jm-button jm-button-secondary">Mark Submitted</button>
+      </div>
+      <div class="jm-button-row">
+        <button id="autofill-page" class="jm-button">Autofill Page</button>
+        <button id="generate-cover-letter" class="jm-button jm-button-secondary">Generate Cover Letter</button>
+      </div>
+    </section>
+
+    <section class="jm-card">
+      <div class="jm-card-head">
+        <h2>Recent Jobs</h2>
+        <p>Latest tracker entries stored in the extension.</p>
+      </div>
+      <div id="recent-jobs" class="jm-stack"></div>
+    </section>
+
+    <section class="jm-card">
+      <div class="jm-card-head">
+        <h2>Cover Letter Preview</h2>
+        <p>Generated from the current page metadata plus your saved template.</p>
+      </div>
+      <pre id="cover-letter-preview" class="jm-preview">Use the button above to generate a preview.</pre>
+    </section>
+
+    <p id="popup-flash" class="jm-flash" hidden></p>
+  </main>
+  <script type="module" src="src/popup/popup.js"></script>
+</body>
+</html>
+
