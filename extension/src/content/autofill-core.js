@@ -30,7 +30,9 @@
   const HEURISTIC_RULES = [
     { key: "full_name", patterns: [/full name/, /\bname\b/, /legal name/], confidence: 0.8 },
     { key: "given_name", patterns: [/first name/, /given name/], confidence: 0.88 },
+    { key: "middle_name", patterns: [/middle name/, /middle initial/], confidence: 0.84 },
     { key: "family_name", patterns: [/last name/, /family name/, /surname/], confidence: 0.88 },
+    { key: "legal_name", patterns: [/legal name/], confidence: 0.9 },
     { key: "email", patterns: [/e mail/, /\bemail\b/], confidence: 0.92 },
     { key: "tel", patterns: [/phone/, /mobile/, /cell/], confidence: 0.9 },
     { key: "address_line1", patterns: [/street address/, /address line 1/, /mailing address/], confidence: 0.9 },
@@ -42,10 +44,16 @@
     { key: "linkedin_url", patterns: [/linkedin/], confidence: 0.96 },
     { key: "github_url", patterns: [/github/], confidence: 0.96 },
     { key: "website_url", patterns: [/portfolio/, /personal site/, /\bwebsite\b/, /\burl\b/], confidence: 0.82 },
+    { key: "location", patterns: [/current location/, /\blocation\b/], confidence: 0.82 },
+    { key: "preferred_location", patterns: [/preferred location/, /where would you like to work/], confidence: 0.86 },
     { key: "resume_file", patterns: [/resume/, /\bcv\b/, /attach file/, /upload/], confidence: 0.96 },
     { key: "work_authorized_us", patterns: [/authorized to work/, /eligible to work/, /work authorization/], confidence: 0.9 },
     { key: "requires_sponsorship", patterns: [/visa/, /sponsorship/], confidence: 0.9 },
     { key: "requires_relocation", patterns: [/relocation/, /willing to relocate/], confidence: 0.86 },
+    { key: "age_over_18", patterns: [/at least 18/, /over 18/, /older than 18/], confidence: 0.9 },
+    { key: "previous_employee", patterns: [/worked here before/, /previous employee/, /former employee/], confidence: 0.88 },
+    { key: "previously_applied", patterns: [/applied here before/, /previous applicant/, /previously applied/], confidence: 0.88 },
+    { key: "referral_source", patterns: [/how did you hear about/, /referral source/, /source of application/], confidence: 0.84 },
     { key: "citizenship", patterns: [/citizenship/, /\bcitizen\b/], confidence: 0.86 },
     { key: "security_clearance", patterns: [/clearance/], confidence: 0.9 },
     { key: "notice_period", patterns: [/notice period/], confidence: 0.84 },
@@ -53,8 +61,11 @@
     { key: "current_company", patterns: [/current company/, /current employer/, /\bemployer\b/], confidence: 0.8 },
     { key: "years_experience", patterns: [/years of experience/, /experience in years/], confidence: 0.88 },
     { key: "highest_degree", patterns: [/highest degree/, /education level/, /\bdegree\b/], confidence: 0.84 },
+    { key: "major", patterns: [/\bmajor\b/, /field of study/], confidence: 0.84 },
+    { key: "minor", patterns: [/\bminor\b/], confidence: 0.82 },
     { key: "school", patterns: [/\bschool\b/, /university/, /college/], confidence: 0.82 },
     { key: "graduation_date", patterns: [/graduation/, /grad date/], confidence: 0.86 },
+    { key: "graduation_year", patterns: [/graduation year/, /grad year/, /expected graduation year/], confidence: 0.88 },
     { key: "salary_expectation", patterns: [/salary/, /compensation/, /pay expectation/], confidence: 0.86 },
     { key: "available_start_date", patterns: [/start date/, /available to start/, /\bavailability\b/], confidence: 0.84 },
     { key: "preferred_workplace", patterns: [/remote/, /hybrid/, /onsite/, /work arrangement/], confidence: 0.8 },
@@ -65,6 +76,10 @@
     { key: "disability_status", patterns: [/disability/], confidence: 0.96 },
     { key: "race_ethnicity", patterns: [/race/, /ethnicity/], confidence: 0.94 },
     { key: "summary", patterns: [/summary/, /about you/, /about yourself/], confidence: 0.78 },
+    { key: "experience_summary", patterns: [/background/, /professional experience/, /work experience/], confidence: 0.68 },
+    { key: "education_summary", patterns: [/education summary/, /academic background/], confidence: 0.68 },
+    { key: "project_summary", patterns: [/project you are proud of/, /projects/, /notable project/], confidence: 0.66 },
+    { key: "motivation_statement", patterns: [/why this role/, /why this company/, /why are you interested/, /motivation/], confidence: 0.68 },
     { key: "cover_letter_text", patterns: [/cover letter/, /why do you want/, /why are you interested/, /motivation/], confidence: 0.72 },
     { key: "top_skills", patterns: [/\bskills\b/, /tech stack/, /strengths/], confidence: 0.74 }
   ];
@@ -110,12 +125,18 @@
   }
 
   function buildStructuredProfile(profile = {}, context = {}) {
+    const candidateSources = context.candidateSources || {};
+    const education = candidateSources.education || {};
+    const linkedin = candidateSources.linkedin || {};
+    const github = candidateSources.github || {};
+    const preferences = candidateSources.preferences || {};
     const inferred = inferNameParts(profile.full_name, profile.preferred_name);
     return {
-      given_name: cleanText(profile.preferred_name || inferred.given_name),
-      middle_name: "",
-      family_name: cleanText(inferred.family_name),
-      full_name: cleanText(profile.full_name),
+      given_name: cleanText(profile.first_name || profile.preferred_name || inferred.given_name),
+      middle_name: cleanText(profile.middle_name),
+      family_name: cleanText(profile.last_name || inferred.family_name),
+      legal_name: cleanText(profile.legal_name || profile.full_name),
+      full_name: cleanText(profile.full_name || github.display_name),
       email: cleanText(profile.email),
       tel: cleanText(profile.phone),
       address_line1: cleanText(profile.address_line_1),
@@ -124,18 +145,28 @@
       state_region: cleanText(profile.state_region),
       postal_code: cleanText(profile.postal_code),
       country: cleanText(profile.country),
-      linkedin_url: cleanText(profile.linkedin),
-      github_url: cleanText(profile.github),
-      website_url: cleanText(profile.personal_website || profile.portfolio || profile.github),
+      linkedin_url: cleanText(profile.linkedin || linkedin.url),
+      github_url: cleanText(profile.github || github.url),
+      website_url: cleanText(profile.personal_website || profile.portfolio || profile.github || github.url),
       current_title: cleanText(profile.current_title),
       current_company: cleanText(profile.current_company),
       years_experience: cleanText(profile.years_experience),
-      highest_degree: cleanText(profile.highest_degree),
-      school: cleanText(profile.school),
-      graduation_date: cleanText(profile.graduation_date),
+      highest_degree: cleanText(profile.highest_degree || education.degree),
+      major: cleanText(profile.major),
+      minor: cleanText(profile.minor),
+      school: cleanText(profile.school || education.school),
+      graduation_date: cleanText(profile.graduation_date || education.graduation),
+      graduation_year: cleanText(
+        profile.graduation_year || String(education.graduation || "").match(/\b(20\d{2}|19\d{2})\b/)?.[0]
+      ),
       work_authorized_us: cleanText(profile.work_authorization),
       requires_sponsorship: cleanText(profile.sponsorship_needed),
       requires_relocation: cleanText(profile.requires_relocation),
+      preferred_location: cleanText(profile.preferred_location),
+      referral_source: cleanText(profile.referral_source),
+      age_over_18: cleanText(profile.age_over_18),
+      previous_employee: cleanText(profile.previous_employee),
+      previously_applied: cleanText(profile.previously_applied),
       citizenship: cleanText(profile.citizenship),
       security_clearance: cleanText(profile.security_clearance),
       notice_period: cleanText(profile.notice_period),
@@ -148,16 +179,39 @@
       veteran_status: cleanText(profile.veteran_status),
       disability_status: cleanText(profile.disability_status),
       race_ethnicity: cleanText(profile.race_ethnicity),
-      summary: cleanText(profile.summary),
+      summary: cleanText(profile.summary || github.bio || linkedin.headline),
       top_skills: cleanText(profile.top_skills),
       cover_letter_text: cleanText(context.coverLetterText),
       cover_letter_latex: cleanText(context.coverLetterLatex),
       resume_file: cleanText(context.resumeMeta?.name || profile.resume_path),
-      location: cleanText(profile.location)
+      location: cleanText(profile.location || linkedin.location || github.location),
+      linkedin_headline: cleanText(linkedin.headline),
+      github_bio: cleanText(github.bio),
+      work_modes: cleanText(preferences.work_modes)
     };
   }
 
   function buildDerivedAnswers(structuredProfile) {
+    const experienceSummary = cleanText(
+      [
+        structuredProfile.current_title && structuredProfile.current_company
+          ? `${structuredProfile.current_title} at ${structuredProfile.current_company}`
+          : structuredProfile.current_title || structuredProfile.current_company,
+        structuredProfile.years_experience ? `${structuredProfile.years_experience} years of experience` : "",
+        structuredProfile.top_skills
+      ]
+        .filter(Boolean)
+        .join(". ")
+    );
+    const educationSummary = cleanText(
+      [
+        [structuredProfile.highest_degree, structuredProfile.major].filter(Boolean).join(" in "),
+        structuredProfile.school,
+        structuredProfile.graduation_date || structuredProfile.graduation_year
+      ]
+        .filter(Boolean)
+        .join(", ")
+    );
     return {
       short_location:
         cleanText([structuredProfile.city, structuredProfile.state_region].filter(Boolean).join(", ")) ||
@@ -173,7 +227,32 @@
         ]
           .filter(Boolean)
           .join(", ")
-      )
+      ),
+      experience_summary: experienceSummary,
+      education_summary: educationSummary,
+      project_summary: cleanText(structuredProfile.top_skills),
+      motivation_statement: cleanText(
+        [
+          structuredProfile.summary,
+          structuredProfile.top_skills ? `My strongest areas are ${structuredProfile.top_skills}.` : "",
+          structuredProfile.preferred_workplace || structuredProfile.work_modes
+            ? `I am looking for ${structuredProfile.preferred_workplace || structuredProfile.work_modes} opportunities.`
+            : ""
+        ]
+          .filter(Boolean)
+          .join(" ")
+      ),
+      background_statement: cleanText([experienceSummary, educationSummary, structuredProfile.summary].filter(Boolean).join(" ")),
+      work_preferences_statement: cleanText(
+        [
+          structuredProfile.preferred_workplace || structuredProfile.work_modes,
+          structuredProfile.preferred_location ? `Preferred location: ${structuredProfile.preferred_location}.` : "",
+          structuredProfile.requires_relocation ? `Relocation: ${structuredProfile.requires_relocation}.` : ""
+        ]
+          .filter(Boolean)
+          .join(" ")
+      ),
+      skills_sentence: cleanText(structuredProfile.top_skills)
     };
   }
 
@@ -222,13 +301,35 @@
   }
 
   function answerTypeForKey(key) {
-    if (["work_authorized_us", "requires_sponsorship", "requires_relocation"].includes(key)) {
+    if (
+      [
+        "work_authorized_us",
+        "requires_sponsorship",
+        "requires_relocation",
+        "age_over_18",
+        "previous_employee",
+        "previously_applied"
+      ].includes(key)
+    ) {
       return "boolean";
     }
     if (key === "resume_file") {
       return "file";
     }
-    if (["cover_letter_text", "cover_letter_latex", "summary", "top_skills"].includes(key)) {
+    if (
+      [
+        "cover_letter_text",
+        "cover_letter_latex",
+        "summary",
+        "top_skills",
+        "experience_summary",
+        "education_summary",
+        "project_summary",
+        "motivation_statement",
+        "background_statement",
+        "work_preferences_statement"
+      ].includes(key)
+    ) {
       return "long_text";
     }
     return "string";
@@ -247,10 +348,32 @@
     if (key === "resume_file" && field.kind === "file") {
       return 0.12;
     }
-    if (["summary", "cover_letter_text", "top_skills"].includes(key) && field.kind === "textarea") {
+    if (
+      [
+        "summary",
+        "cover_letter_text",
+        "top_skills",
+        "experience_summary",
+        "education_summary",
+        "project_summary",
+        "motivation_statement",
+        "background_statement",
+        "work_preferences_statement"
+      ].includes(key) &&
+      field.kind === "textarea"
+    ) {
       return 0.05;
     }
-    if (["work_authorized_us", "requires_sponsorship", "requires_relocation"].includes(key)) {
+    if (
+      [
+        "work_authorized_us",
+        "requires_sponsorship",
+        "requires_relocation",
+        "age_over_18",
+        "previous_employee",
+        "previously_applied"
+      ].includes(key)
+    ) {
       if (field.kind === "radio-group" || field.kind === "checkbox" || field.kind === "select") {
         return 0.06;
       }
@@ -399,6 +522,33 @@
     return best;
   }
 
+  function generatedNarrativeCandidate(field, answerContext) {
+    if (field.kind !== "textarea" && field.kind !== "text") {
+      return null;
+    }
+    const candidates = [
+      ["motivation_statement", answerContext.derivedAnswers.motivation_statement, /why this|why are you interested|motivation|why do you want/],
+      ["experience_summary", answerContext.derivedAnswers.experience_summary, /experience|background|professional history/],
+      ["education_summary", answerContext.derivedAnswers.education_summary, /education|academic background/],
+      ["project_summary", answerContext.derivedAnswers.project_summary, /project|projects|build/],
+      ["work_preferences_statement", answerContext.derivedAnswers.work_preferences_statement, /preferred location|work arrangement|remote|hybrid|onsite/]
+    ];
+
+    for (const [key, answer, pattern] of candidates) {
+      if (answer && pattern.test(field.signalTextNormalized)) {
+        return {
+          taxonomyKey: key,
+          answer,
+          answerType: "long_text",
+          confidence: field.kind === "textarea" ? 0.78 : 0.82,
+          source: "generated",
+          reason: `generated from profile and candidate data: ${key}`
+        };
+      }
+    }
+    return null;
+  }
+
   function bestCandidate(candidates) {
     return [...candidates].sort((left, right) => right.confidence - left.confidence)[0] || null;
   }
@@ -450,8 +600,21 @@
     if (questionCandidate && compatiblePolicyCandidate(field, questionCandidate)) {
       candidates.push(questionCandidate);
     }
+    const generatedCandidate = generatedNarrativeCandidate(field, answerContext);
+    if (generatedCandidate && compatiblePolicyCandidate(field, generatedCandidate)) {
+      candidates.push(generatedCandidate);
+    }
 
-    const selected = bestCandidate(candidates);
+    let selected = bestCandidate(candidates);
+    if (
+      generatedCandidate &&
+      selected &&
+      field.kind === "textarea" &&
+      selected.source === "heuristic" &&
+      ["summary", "experience_summary", "project_summary", "motivation_statement"].includes(selected.taxonomyKey)
+    ) {
+      selected = generatedCandidate;
+    }
     if (!selected) {
       const aiCandidate = maybeResolveWithAiFallback(field, answerContext);
       if (aiCandidate) {

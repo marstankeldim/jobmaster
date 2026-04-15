@@ -1,6 +1,6 @@
 # Jobmaster Extension
 
-Current version: `0.2.2`
+Current version: `0.2.3`
 
 ## Load Unpacked
 
@@ -24,12 +24,15 @@ Current version: `0.2.2`
 - recent scan history with timing, root/step scope, and skipped-field previews
 - conservative review queue for medium-confidence matches
 - scan fallback that widens from active step to root/document if the first scope comes back empty
+- profile settings aligned more closely to common application asks like legal name, name parts, education details, preferred location, referral source, and prior-application flags
+- generated answers that synthesize responses from your existing profile and candidate source data instead of relying on a huge duplicate question list
 
 ## Autofill Behavior
 
 - `Conservative` now autofills clear high-signal fields like email, phone, many name/address fields, and file uploads more reliably.
 - Long-form custom prompts are still biased toward `Needs Review` instead of being pasted blindly.
 - The popup now analyzes pages using your saved autofill settings, so adapter toggles and mode changes affect both scan and fill behavior consistently.
+- The profile/settings page now stores more of the fields companies commonly ask directly, and the autofill engine derives related answers from those fields plus candidate source data.
 
 ## Troubleshooting
 

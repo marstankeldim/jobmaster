@@ -55,6 +55,27 @@ function makeContext(overrides = {}) {
         }
       ]
     },
+    candidateSources: {
+      linkedin: {
+        url: "https://www.linkedin.com/in/ayan-ospan",
+        headline: "Automation-focused engineering student",
+        location: "New York, NY"
+      },
+      github: {
+        url: "https://github.com/marstankeldim",
+        display_name: "Ayan Ospan",
+        bio: "Builds robotics and automation systems",
+        location: "New York, NY"
+      },
+      education: {
+        school: "Penn State",
+        degree: "B.S. Electrical Engineering",
+        graduation: "May 2027"
+      },
+      preferences: {
+        work_modes: "Remote or hybrid"
+      }
+    },
     coverLetterText: "This is my cover letter.",
     coverLetterLatex: "\\\\documentclass{letter}",
     resumeMeta: { name: "resume.pdf" },
@@ -75,11 +96,14 @@ test("parseAutocompleteAttribute keeps detail tokens and strips control tokens",
 
 test("buildStructuredProfile derives canonical fields", async () => {
   const core = await loadCore();
-  const structured = core.buildStructuredProfile(makeContext().profile, makeContext());
+  const context = makeContext();
+  const structured = core.buildStructuredProfile(context.profile, context);
   assert.equal(structured.given_name, "Ayan");
   assert.equal(structured.family_name, "Ospan");
   assert.equal(structured.linkedin_url, "https://www.linkedin.com/in/ayan-ospan");
   assert.equal(structured.resume_file, "resume.pdf");
+  assert.equal(structured.school, "Penn State");
+  assert.equal(structured.highest_degree, "B.S. Electrical Engineering");
 });
 
 test("matchResolvedField prefers autocomplete over heuristics", async () => {
@@ -163,4 +187,31 @@ test("policy bucket blocks unrelated answers from equal opportunity sections", a
     "generic"
   );
   assert.equal(match.decision, "skip");
+});
+
+test("generated candidate answers use existing candidate data instead of duplicate canned questions", async () => {
+  const core = await loadCore();
+  const answerContext = core.buildAnswerContext(makeContext());
+  const match = core.matchResolvedField(
+    {
+      fieldId: "background-1",
+      kind: "textarea",
+      accessibleName: "Tell us about your background",
+      groupName: "",
+      sectionPath: "Application Questions",
+      signalText: "Tell us about your background",
+      signalTextNormalized: "tell us about your background",
+      questionText: "Tell us about your background",
+      questionNormalized: "tell us about your background",
+      questionTokens: ["tell", "us", "about", "your", "background"],
+      autocompleteTokens: [],
+      adapterHints: [],
+      options: [],
+      policyBucket: ""
+    },
+    answerContext,
+    "generic"
+  );
+  assert.equal(match.source, "generated");
+  assert.match(match.selectedAnswer, /Penn State|automation/i);
 });
