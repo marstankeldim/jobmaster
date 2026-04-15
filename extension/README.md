@@ -1,6 +1,6 @@
 # Jobmaster Extension
 
-Current version: `0.2.3`
+Current version: `0.2.4`
 
 ## Load Unpacked
 
@@ -25,6 +25,7 @@ Current version: `0.2.3`
 - conservative review queue for medium-confidence matches
 - scan fallback that widens from active step to root/document if the first scope comes back empty
 - profile settings aligned more closely to common application asks like legal name, name parts, education details, preferred location, referral source, and prior-application flags
+- yes/no profile fields now use dropdown selections, and graduation year uses a year selector instead of free-text input
 - generated answers that synthesize responses from your existing profile and candidate source data instead of relying on a huge duplicate question list
 
 ## Autofill Behavior

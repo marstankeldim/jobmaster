@@ -57,15 +57,45 @@
           <label>Minor<input name="minor" type="text"></label>
           <label>School<input name="school" type="text"></label>
           <label>Graduation date<input name="graduation_date" type="text"></label>
-          <label>Graduation year<input name="graduation_year" type="text"></label>
-          <label>Work authorization<input name="work_authorization" type="text"></label>
-          <label>Sponsorship needed<input name="sponsorship_needed" type="text"></label>
+          <label>Graduation year<select name="graduation_year" id="graduation-year"></select></label>
+          <label>Work authorization
+            <select name="work_authorization">
+              <option value=""></option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+          </label>
+          <label>Sponsorship needed
+            <select name="sponsorship_needed">
+              <option value=""></option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+          </label>
           <label>Open to relocation<input name="requires_relocation" type="text"></label>
           <label>Preferred location<input name="preferred_location" type="text"></label>
           <label>Referral source<input name="referral_source" type="text"></label>
-          <label>At least 18 years old<input name="age_over_18" type="text"></label>
-          <label>Previously worked here<input name="previous_employee" type="text"></label>
-          <label>Previously applied here<input name="previously_applied" type="text"></label>
+          <label>At least 18 years old
+            <select name="age_over_18">
+              <option value=""></option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+          </label>
+          <label>Previously worked here
+            <select name="previous_employee">
+              <option value=""></option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+          </label>
+          <label>Previously applied here
+            <select name="previously_applied">
+              <option value=""></option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+          </label>
           <label>Citizenship<input name="citizenship" type="text"></label>
           <label>Security clearance<input name="security_clearance" type="text"></label>
           <label>Notice period<input name="notice_period" type="text"></label>

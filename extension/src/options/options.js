@@ -65,6 +65,19 @@ function flash(message, isError = false) {
   }, 2600);
 }
 
+function ensureYearOptions() {
+  const select = document.getElementById("graduation-year");
+  if (!select || select.options.length) {
+    return;
+  }
+  const currentYear = new Date().getFullYear();
+  const years = [];
+  for (let year = currentYear - 10; year <= currentYear + 12; year += 1) {
+    years.push(String(year));
+  }
+  select.innerHTML = ['<option value=""></option>', ...years.reverse().map((year) => `<option value="${year}">${year}</option>`)].join("");
+}
+
 function formToObject(form) {
   const formData = new FormData(form);
   return Object.fromEntries(formData.entries());
@@ -120,6 +133,7 @@ function populateAutofillSettings(autofillSettings) {
 }
 
 async function refresh() {
+  ensureYearOptions();
   const [stateResponse, countsResponse] = await Promise.all([
     callExtension("jobmaster:get-state"),
     callExtension("jobmaster:summary-counts")
