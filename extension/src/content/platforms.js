@@ -1,4 +1,30 @@
 (function attachPlatforms(globalScope) {
+  function fieldCount(root = document) {
+    return root.querySelectorAll("input, select, textarea").length;
+  }
+
+  function nodeDepth(node, boundary = document.body) {
+    let depth = 0;
+    let current = node;
+    while (current && current !== boundary && current !== document.body) {
+      depth += 1;
+      current = current.parentElement;
+    }
+    return depth;
+  }
+
+  function isMeaningfullyVisible(node) {
+    if (!node || node.hidden) {
+      return false;
+    }
+    const style = window.getComputedStyle(node);
+    if (style.display === "none" || style.visibility === "hidden") {
+      return false;
+    }
+    const rect = node.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
   function firstMatch(selectors, root = document) {
     for (const selector of selectors) {
       const node = root.querySelector(selector);
@@ -27,6 +53,36 @@
   function genericCompanyFromTitle() {
     const parts = titleParts(document.title);
     return parts.length > 1 ? parts[1] : metaContent("meta[property='og:site_name']");
+  }
+
+  function bestVisibleFieldContainer(selectors, root = document) {
+    const candidates = [];
+    const seen = new Set();
+    for (const selector of selectors) {
+      for (const node of root.querySelectorAll(selector)) {
+        if (seen.has(node) || !isMeaningfullyVisible(node)) {
+          continue;
+        }
+        seen.add(node);
+        const count = fieldCount(node);
+        if (!count) {
+          continue;
+        }
+        candidates.push({
+          node,
+          selector,
+          fieldCount: count,
+          depth: nodeDepth(node, root)
+        });
+      }
+    }
+    candidates.sort((left, right) => {
+      if (left.fieldCount !== right.fieldCount) {
+        return left.fieldCount - right.fieldCount;
+      }
+      return right.depth - left.depth;
+    });
+    return candidates[0] || null;
   }
 
   const adapters = [
@@ -76,6 +132,17 @@
           "[data-automation-id='applyFlow']",
           "main"
         ], doc),
+      findStepRoot: (root) =>
+        bestVisibleFieldContainer([
+          "form",
+          "[data-automation-id='formPanel']",
+          "[data-automation-id='stepContent']",
+          "[data-automation-id='pageContent']",
+          "[data-automation-id='questionnairePage']",
+          "[data-automation-id='panel']",
+          "[data-automation-id='multiselectInputContainer']",
+          "[role='group']"
+        ], root),
       extractJob: (doc, location) => ({
         title: textContent("h2[data-automation-id='jobPostingHeader']", doc) || textContent("h1", doc),
         company: metaContent("meta[property='og:site_name']") || genericCompanyFromTitle(),
@@ -94,6 +161,15 @@
           "[data-easy-apply-modal]",
           "main"
         ], doc),
+      findStepRoot: (root) =>
+        bestVisibleFieldContainer([
+          "form",
+          ".jobs-easy-apply-content form",
+          ".jobs-easy-apply-form-section__grouping",
+          ".jobs-easy-apply-form-section__grouping > div",
+          ".jobs-easy-apply-content [role='group']",
+          ".jobs-easy-apply-content section"
+        ], root),
       extractJob: (doc, location) => ({
         title: textContent(".jobs-unified-top-card__job-title", doc) || textContent("h1", doc),
         company: textContent(".jobs-unified-top-card__company-name", doc) || genericCompanyFromTitle(),
@@ -137,23 +213,35 @@
     return { node: root, selector: "document" };
   }
 
+  function resolveStepRoot(adapter, rootMatch) {
+    const result = adapter.findStepRoot?.(rootMatch.node);
+    if (result?.node) {
+      return result;
+    }
+    return { node: rootMatch.node, selector: rootMatch.selector };
+  }
+
   function hasApplicationFields(root = document) {
-    return root.querySelectorAll("input, select, textarea").length > 2;
+    return fieldCount(root) > 2;
   }
 
   function analyzePage() {
     const startedAt = performance.now();
     const adapter = detectPlatform(window.location);
     const rootMatch = resolveApplicationRoot(adapter, document);
+    const stepMatch = resolveStepRoot(adapter, rootMatch);
     return {
       platform: adapter.name,
-      applicationFormDetected: hasApplicationFields(rootMatch.node),
+      applicationFormDetected: hasApplicationFields(stepMatch.node),
       rootSelectorUsed: rootMatch.selector,
-      fieldCountHint: rootMatch.node.querySelectorAll("input, select, textarea").length,
+      stepSelectorUsed: stepMatch.selector,
+      fieldCountHint: fieldCount(stepMatch.node),
       metrics: {
         platform: adapter.name,
         rootSelectorUsed: rootMatch.selector,
-        fieldCountVisible: rootMatch.node.querySelectorAll("input, select, textarea").length,
+        stepSelectorUsed: stepMatch.selector,
+        fieldCountRoot: fieldCount(rootMatch.node),
+        fieldCountVisible: fieldCount(stepMatch.node),
         scanDurationMs: Math.round(performance.now() - startedAt)
       },
       job: adapter.extractJob(document, window.location)
@@ -164,6 +252,7 @@
     adapters,
     analyzePage,
     detectPlatform,
-    resolveApplicationRoot
+    resolveApplicationRoot,
+    resolveStepRoot
   };
 })(globalThis);

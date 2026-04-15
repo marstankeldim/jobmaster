@@ -8,6 +8,7 @@
     "activeTab",
     "tabs",
     "scripting",
+    "downloads",
     "unlimitedStorage"
   ],
   "host_permissions": [
@@ -38,4 +39,3 @@
     }
   ]
 }
-

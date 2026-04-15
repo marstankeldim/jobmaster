@@ -6,6 +6,14 @@ function formatToday() {
   });
 }
 
+function sanitizeFilenamePart(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
 export function buildCoverLetterContext(job = {}, profile = {}) {
   return {
     ...Object.fromEntries(
@@ -38,6 +46,16 @@ export function renderCoverLetter(templateText, job = {}, profile = {}) {
     .trim();
 }
 
+export function buildCoverLetterFilenameBase(job = {}, _profile = {}) {
+  const parts = [
+    "cover-letter",
+    sanitizeFilenamePart(job.company),
+    sanitizeFilenamePart(job.title),
+    new Date().toISOString().slice(0, 10)
+  ].filter(Boolean);
+  return parts.join("-");
+}
+
 export function latexToText(renderedLatex) {
   return String(renderedLatex)
     .replace(/^%.*$/gm, "")
@@ -54,4 +72,104 @@ export function latexToText(renderedLatex) {
     .replace(/[{}]/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function escapePdfText(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)");
+}
+
+function pdfObject(id, body) {
+  return `${id} 0 obj\n${body}\nendobj\n`;
+}
+
+export function buildPdfFromText(text) {
+  const pageWidth = 612;
+  const pageHeight = 792;
+  const marginLeft = 72;
+  const marginTop = 720;
+  const lineHeight = 15;
+  const maxLinesPerPage = 42;
+  const normalizedLines = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .flatMap((line) => {
+      const cleanLine = line.trimEnd();
+      if (!cleanLine) {
+        return [""];
+      }
+      const chunks = [];
+      let remaining = cleanLine;
+      while (remaining.length > 96) {
+        chunks.push(remaining.slice(0, 96));
+        remaining = remaining.slice(96);
+      }
+      chunks.push(remaining);
+      return chunks;
+    });
+
+  const pages = [];
+  for (let index = 0; index < normalizedLines.length; index += maxLinesPerPage) {
+    pages.push(normalizedLines.slice(index, index + maxLinesPerPage));
+  }
+  if (!pages.length) {
+    pages.push([""]);
+  }
+
+  const objects = [];
+  let nextObjectId = 1;
+  const catalogId = nextObjectId++;
+  const pagesId = nextObjectId++;
+  const fontId = nextObjectId++;
+  const pageObjectIds = [];
+
+  for (const pageLines of pages) {
+    const pageId = nextObjectId++;
+    const contentsId = nextObjectId++;
+    pageObjectIds.push(pageId);
+    const streamLines = [
+      "BT",
+      "/F1 11 Tf",
+      `${lineHeight} TL`,
+      `${marginLeft} ${marginTop} Td`
+    ];
+    pageLines.forEach((line, lineIndex) => {
+      if (lineIndex > 0) {
+        streamLines.push("T*");
+      }
+      streamLines.push(`(${escapePdfText(line)}) Tj`);
+    });
+    streamLines.push("ET");
+    const stream = streamLines.join("\n");
+    objects.push(
+      pdfObject(
+        pageId,
+        `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentsId} 0 R >>`
+      )
+    );
+    objects.push(
+      pdfObject(contentsId, `<< /Length ${new TextEncoder().encode(stream).length} >>\nstream\n${stream}\nendstream`)
+    );
+  }
+
+  objects.unshift(pdfObject(fontId, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"));
+  objects.unshift(pdfObject(pagesId, `<< /Type /Pages /Count ${pageObjectIds.length} /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] >>`));
+  objects.unshift(pdfObject(catalogId, `<< /Type /Catalog /Pages ${pagesId} 0 R >>`));
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const object of objects) {
+    offsets.push(pdf.length);
+    pdf += object;
+  }
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  for (let index = 1; index < offsets.length; index += 1) {
+    pdf += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return new TextEncoder().encode(pdf);
 }

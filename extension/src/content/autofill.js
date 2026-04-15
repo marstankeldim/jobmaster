@@ -1,6 +1,7 @@
 (function attachAutofill(globalScope) {
   const YES_WORDS = new Set(["yes", "true", "1"]);
   const NO_WORDS = new Set(["no", "false", "0"]);
+  const SCAN_OBSERVER_ATTRIBUTE_FILTER = ["class", "style", "hidden", "aria-hidden", "disabled"];
   const FIELD_TAXONOMY_RULES = [
     { key: "full_name", pattern: /full.?name|your name|applicant name|legal name/ },
     { key: "preferred_name", pattern: /preferred name|nickname/ },
@@ -42,6 +43,12 @@
     { key: "top_skills", pattern: /skills|tech stack|strengths/ },
     { key: "cover_letter", pattern: /cover letter/ }
   ];
+  const scanRuntime = {
+    observedRoot: null,
+    observer: null,
+    mutationVersion: 0,
+    cachedScan: null
+  };
 
   function normalize(value) {
     return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -49,6 +56,21 @@
 
   function cleanText(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function toAnswerString(value) {
+    if (Array.isArray(value)) {
+      return cleanText(value.filter(Boolean).join(", "));
+    }
+    return cleanText(value);
+  }
+
+  function previewValue(value, maxLength = 72) {
+    const text = cleanText(value);
+    if (text.length <= maxLength) {
+      return text;
+    }
+    return `${text.slice(0, maxLength - 1)}…`;
   }
 
   function isPotentiallyRelevant(element) {
@@ -162,22 +184,43 @@
     };
   }
 
-  function classifyField(field) {
-    const text = normalize(
-      [
-        field.labelText,
-        field.name,
-        field.placeholder,
-        field.ariaLabel,
-        field.autocomplete,
-        field.id
-      ].join(" ")
-    );
-    if (!text) {
+  function buildMatcherContext(profile, answersData, coverLetter) {
+    const taxonomyAnswers = {};
+    for (const [key, value] of Object.entries(profileTaxonomyAnswers(profile, coverLetter))) {
+      const text = toAnswerString(value);
+      if (text) {
+        taxonomyAnswers[key] = text;
+      }
+    }
+
+    const customAnswers = (answersData?.answers || [])
+      .map((item) => {
+        const answer = toAnswerString(item.answer);
+        const candidates = [item.question, ...(item.aliases || [])]
+          .map(normalize)
+          .filter(Boolean);
+        return {
+          answer,
+          question: cleanText(item.question),
+          candidates,
+          tokenSets: candidates.map((candidate) => candidate.split(" ").filter(Boolean))
+        };
+      })
+      .filter((item) => item.answer && item.candidates.length);
+
+    return { taxonomyAnswers, customAnswers };
+  }
+
+  function classifyField(field, adapter) {
+    const adapterClassification = adapter?.classifyField?.(field);
+    if (adapterClassification?.taxonomyKey) {
+      return adapterClassification;
+    }
+    if (!field.searchTextNormalized) {
       return { taxonomyKey: null, confidence: 0 };
     }
     for (const rule of FIELD_TAXONOMY_RULES) {
-      if (rule.pattern.test(text)) {
+      if (rule.pattern.test(field.searchTextNormalized)) {
         return { taxonomyKey: rule.key, confidence: 0.95 };
       }
     }
@@ -193,13 +236,13 @@
     return { taxonomyKey: null, confidence: 0 };
   }
 
-  function scanFields(root = document, labelIndex = new Map()) {
+  function scanFields(root = document, labelIndex = new Map(), adapter = null) {
     const rawFields = [...root.querySelectorAll("input, textarea, select")];
     const potentialFields = rawFields.filter(isPotentiallyRelevant);
     const visibleFields = potentialFields.filter(isVisible);
 
     const scannedFields = visibleFields.map((element) => {
-      const baseField = {
+      const field = {
         element,
         tag: element.tagName.toLowerCase(),
         type: (element.getAttribute("type") || "").toLowerCase(),
@@ -217,8 +260,15 @@
               }))
             : []
       };
-      const classification = classifyField(baseField);
-      return { ...baseField, ...classification };
+      const searchText = cleanText(
+        [field.labelText, field.name, field.placeholder, field.ariaLabel, field.autocomplete, field.id].join(" ")
+      );
+      const nextField = {
+        ...field,
+        searchText,
+        searchTextNormalized: normalize(searchText)
+      };
+      return { ...nextField, ...classifyField(nextField, adapter) };
     });
 
     return {
@@ -231,28 +281,30 @@
     };
   }
 
-  function customAnswerMatch(fieldText, answersData) {
-    const normalizedField = normalize(fieldText);
-    const fieldTokens = normalizedField.split(" ");
+  function customAnswerMatch(field, customAnswers) {
+    const fieldTokens = field.searchTextNormalized.split(" ").filter(Boolean);
     let best = null;
-    for (const item of answersData.answers || []) {
-      const candidates = [item.question, ...(item.aliases || [])];
+    for (const item of customAnswers) {
       let score = 0;
-      for (const candidate of candidates) {
-        const normalizedCandidate = normalize(candidate);
-        if (!normalizedCandidate) {
+      for (let index = 0; index < item.candidates.length; index += 1) {
+        const candidate = item.candidates[index];
+        if (field.searchTextNormalized.includes(candidate)) {
+          score = Math.max(score, candidate.length + 15);
           continue;
         }
-        if (normalizedField.includes(normalizedCandidate)) {
-          score = Math.max(score, normalizedCandidate.length);
-        } else {
-          const overlap = normalizedCandidate.split(" ").filter((token) => fieldTokens.includes(token)).length;
-          score = Math.max(score, overlap * 5);
-        }
+        const overlap = item.tokenSets[index].filter((token) => fieldTokens.includes(token)).length;
+        score = Math.max(score, overlap * 5);
       }
-      if (score > 0 && String(item.answer || "").trim()) {
+      if (score > 0) {
+        const confidence = Math.min(0.88, 0.45 + score / 60);
         if (!best || score > best.score) {
-          best = { answer: String(item.answer).trim(), score, reason: `custom match: ${item.question}` };
+          best = {
+            answer: item.answer,
+            score,
+            source: "custom",
+            confidence,
+            reason: item.question ? `custom match: ${item.question}` : "custom match"
+          };
         }
       }
     }
@@ -283,30 +335,36 @@
     return null;
   }
 
-  function chooseAnswer(field, profile, answersData, coverLetter) {
-    const fieldText = [field.labelText, field.name, field.placeholder, field.ariaLabel, field.autocomplete, field.id]
-      .map(cleanText)
-      .join(" ");
-    const taxonomyAnswers = profileTaxonomyAnswers(profile, coverLetter);
-
-    if (field.taxonomyKey && taxonomyAnswers[field.taxonomyKey]) {
+  function chooseAnswer(field, matcherContext) {
+    if (field.taxonomyKey && matcherContext.taxonomyAnswers[field.taxonomyKey]) {
       return {
-        answer: String(taxonomyAnswers[field.taxonomyKey]),
+        answer: matcherContext.taxonomyAnswers[field.taxonomyKey],
+        source: "taxonomy",
         reason: `taxonomy match: ${field.taxonomyKey}`,
         confidence: field.confidence ?? 0.95
       };
     }
 
-    const custom = customAnswerMatch(fieldText, answersData);
+    const custom = customAnswerMatch(field, matcherContext.customAnswers);
     if (custom) {
       return custom;
     }
 
-    if (field.type === "email" && profile.email) {
-      return { answer: profile.email, reason: "email input" };
+    if (field.type === "email" && matcherContext.taxonomyAnswers.email) {
+      return {
+        answer: matcherContext.taxonomyAnswers.email,
+        source: "fallback",
+        reason: "email input",
+        confidence: 0.75
+      };
     }
-    if ((field.type === "tel" || field.type === "phone") && profile.phone) {
-      return { answer: profile.phone, reason: "phone input" };
+    if ((field.type === "tel" || field.type === "phone") && matcherContext.taxonomyAnswers.phone) {
+      return {
+        answer: matcherContext.taxonomyAnswers.phone,
+        source: "fallback",
+        reason: "phone input",
+        confidence: 0.75
+      };
     }
     return null;
   }
@@ -384,103 +442,213 @@
     setTimeout(() => toast.remove(), 4500);
   }
 
-  function resolveRootMatch() {
+  function resolveScanTarget() {
     const adapter = globalScope.JobmasterPlatforms.detectPlatform(window.location);
-    return globalScope.JobmasterPlatforms.resolveApplicationRoot(adapter, document);
+    const rootMatch = globalScope.JobmasterPlatforms.resolveApplicationRoot(adapter, document);
+    const stepMatch = globalScope.JobmasterPlatforms.resolveStepRoot(adapter, rootMatch);
+    return { adapter, rootMatch, stepMatch };
+  }
+
+  function invalidateScanCache() {
+    scanRuntime.mutationVersion += 1;
+    scanRuntime.cachedScan = null;
+  }
+
+  function nodeTouchesRelevantFields(node) {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) {
+      return false;
+    }
+    if (node.matches("input, textarea, select, label, fieldset, legend, option, form")) {
+      return true;
+    }
+    return Boolean(node.querySelector?.("input, textarea, select, label"));
+  }
+
+  function mutationsAreMeaningful(mutations) {
+    return mutations.some((mutation) => {
+      if (mutation.type === "childList") {
+        return [...mutation.addedNodes, ...mutation.removedNodes].some(nodeTouchesRelevantFields);
+      }
+      return nodeTouchesRelevantFields(mutation.target);
+    });
+  }
+
+  function ensureScanObserver(root) {
+    if (scanRuntime.observedRoot === root && scanRuntime.observer) {
+      return;
+    }
+    if (scanRuntime.observer) {
+      scanRuntime.observer.disconnect();
+    }
+    scanRuntime.observedRoot = root;
+    scanRuntime.observer = new MutationObserver((mutations) => {
+      if (mutationsAreMeaningful(mutations)) {
+        invalidateScanCache();
+      }
+    });
+    scanRuntime.observer.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: SCAN_OBSERVER_ATTRIBUTE_FILTER
+    });
+    invalidateScanCache();
+  }
+
+  function buildScanSnapshot(scanTarget) {
+    const labelIndex = buildLabelIndex(scanTarget.stepMatch.node);
+    const snapshot = scanFields(scanTarget.stepMatch.node, labelIndex, scanTarget.adapter);
+    return {
+      ...snapshot,
+      rootNode: scanTarget.rootMatch.node,
+      stepNode: scanTarget.stepMatch.node,
+      rootSelectorUsed: scanTarget.rootMatch.selector,
+      stepSelectorUsed: scanTarget.stepMatch.selector
+    };
+  }
+
+  function getScanSnapshot(scanTarget) {
+    const cached = scanRuntime.cachedScan;
+    if (
+      cached &&
+      cached.rootNode === scanTarget.rootMatch.node &&
+      cached.stepNode === scanTarget.stepMatch.node &&
+      cached.mutationVersion === scanRuntime.mutationVersion
+    ) {
+      return { ...cached.snapshot, cacheHit: true };
+    }
+    const snapshot = buildScanSnapshot(scanTarget);
+    scanRuntime.cachedScan = {
+      rootNode: scanTarget.rootMatch.node,
+      stepNode: scanTarget.stepMatch.node,
+      mutationVersion: scanRuntime.mutationVersion,
+      snapshot
+    };
+    return { ...snapshot, cacheHit: false };
+  }
+
+  async function fillField(field, candidate, resumeAsset) {
+    if (field.type === "file") {
+      const ok = await setResumeFile(field.element, resumeAsset);
+      if (ok) {
+        return { filled: true, message: "resume" };
+      }
+      return { filled: false, skippedReason: "no stored resume" };
+    }
+
+    if (field.tag === "select") {
+      const option = chooseSelectOption(candidate.answer, field);
+      if (!option) {
+        return { filled: false, skippedReason: "no select match" };
+      }
+      setNativeValue(field.element, option);
+      return { filled: true, message: candidate.reason };
+    }
+
+    if (field.type === "checkbox") {
+      const normalizedAnswer = normalize(candidate.answer);
+      if (YES_WORDS.has(normalizedAnswer)) {
+        setChecked(field.element, true);
+        return { filled: true, message: "checked" };
+      }
+      if (NO_WORDS.has(normalizedAnswer)) {
+        setChecked(field.element, false);
+        return { filled: true, message: "unchecked" };
+      }
+      return { filled: false, skippedReason: "checkbox ambiguous" };
+    }
+
+    if (field.type === "radio") {
+      const normalizedAnswer = normalize(candidate.answer);
+      const radioValue = normalize(field.element.value);
+      const radioLabel = normalize(field.labelText);
+      if (
+        radioValue === normalizedAnswer ||
+        normalizedAnswer.includes(radioValue) ||
+        radioLabel.includes(normalizedAnswer)
+      ) {
+        setChecked(field.element, true);
+        return { filled: true, message: candidate.reason };
+      }
+      return { filled: false, skippedReason: "radio mismatch" };
+    }
+
+    field.element.focus();
+    setNativeValue(field.element, candidate.answer);
+    return { filled: true, message: candidate.reason };
   }
 
   async function runAutofill(context) {
     const startedAt = performance.now();
-    const rootMatch = resolveRootMatch();
-    const labelIndex = buildLabelIndex(rootMatch.node);
-    const { fields, metrics } = scanFields(rootMatch.node, labelIndex);
+    const scanTarget = resolveScanTarget();
+    ensureScanObserver(scanTarget.rootMatch.node);
+    const scanSnapshot = getScanSnapshot(scanTarget);
+    const matcherContext = buildMatcherContext(context.profile, context.answers, context.coverLetterText);
     const filled = [];
     const skipped = [];
     const classified = [];
 
-    for (const field of fields) {
-      const candidate = chooseAnswer(field, context.profile, context.answers, context.coverLetterText);
+    for (const field of scanSnapshot.fields) {
+      const candidate = chooseAnswer(field, matcherContext);
       const label = field.labelText || field.name || field.id || field.placeholder || "<unnamed>";
-      classified.push({
+      const entry = {
         label,
         taxonomyKey: field.taxonomyKey,
-        confidence: field.confidence ?? 0,
-        matched: Boolean(candidate)
-      });
+        confidence: candidate?.confidence ?? field.confidence ?? 0,
+        matched: Boolean(candidate),
+        source: candidate?.source || "",
+        matchReason: candidate?.reason || "",
+        action: "skipped",
+        skippedReason: "",
+        answerPreview: candidate?.answer ? previewValue(candidate.answer) : ""
+      };
+
       if (!candidate || !String(candidate.answer).trim()) {
+        entry.skippedReason = "no answer match";
         skipped.push(label);
+        classified.push(entry);
         continue;
       }
 
       try {
-        if (field.type === "file") {
-          const ok = await setResumeFile(field.element, context.resumeAsset);
-          if (ok) {
-            filled.push(`${label} <- resume`);
-          } else {
-            skipped.push(`${label} (no stored resume)`);
-          }
-          continue;
+        const outcome = await fillField(field, candidate, context.resumeAsset);
+        if (outcome.filled) {
+          entry.action = "filled";
+          filled.push(`${label} <- ${outcome.message}`);
+        } else {
+          entry.skippedReason = outcome.skippedReason || "not filled";
+          skipped.push(`${label} (${entry.skippedReason})`);
         }
-
-        if (field.tag === "select") {
-          const option = chooseSelectOption(candidate.answer, field);
-          if (!option) {
-            skipped.push(`${label} (no select match)`);
-            continue;
-          }
-          setNativeValue(field.element, option);
-          filled.push(`${label} <- ${candidate.reason}`);
-          continue;
-        }
-
-        if (field.type === "checkbox") {
-          const normalizedAnswer = normalize(candidate.answer);
-          if (YES_WORDS.has(normalizedAnswer)) {
-            setChecked(field.element, true);
-            filled.push(`${label} <- checked`);
-          } else if (NO_WORDS.has(normalizedAnswer)) {
-            skipped.push(`${label} (left unchecked)`);
-          } else {
-            skipped.push(`${label} (checkbox ambiguous)`);
-          }
-          continue;
-        }
-
-        if (field.type === "radio") {
-          const normalizedAnswer = normalize(candidate.answer);
-          const radioValue = normalize(field.element.value);
-          const radioLabel = normalize(field.labelText);
-          if (
-            radioValue === normalizedAnswer ||
-            normalizedAnswer.includes(radioValue) ||
-            radioLabel.includes(normalizedAnswer)
-          ) {
-            setChecked(field.element, true);
-            filled.push(`${label} <- ${candidate.reason}`);
-          } else {
-            skipped.push(`${label} (radio mismatch)`);
-          }
-          continue;
-        }
-
-        field.element.focus();
-        setNativeValue(field.element, candidate.answer);
-        filled.push(`${label} <- ${candidate.reason}`);
       } catch (error) {
-        skipped.push(`${label} (${error instanceof Error ? error.message : String(error)})`);
+        entry.skippedReason = error instanceof Error ? error.message : String(error);
+        skipped.push(`${label} (${entry.skippedReason})`);
       }
+      classified.push(entry);
     }
+
+    const matchBreakdown = classified.reduce((accumulator, item) => {
+      if (!item.source) {
+        return accumulator;
+      }
+      accumulator[item.source] = (accumulator[item.source] || 0) + 1;
+      return accumulator;
+    }, {});
 
     const result = {
       filled,
       skipped,
       metrics: {
-        ...metrics,
-        platform: globalScope.JobmasterPlatforms.detectPlatform(window.location).name,
-        rootSelectorUsed: rootMatch.selector,
+        ...scanSnapshot.metrics,
+        platform: scanTarget.adapter.name,
+        rootSelectorUsed: scanSnapshot.rootSelectorUsed,
+        stepSelectorUsed: scanSnapshot.stepSelectorUsed,
         fieldCountMatched: classified.filter((item) => item.matched).length,
         fieldCountClassified: classified.filter((item) => item.taxonomyKey).length,
+        fieldCountFilled: filled.length,
+        fieldCountSkipped: skipped.length,
+        cacheHit: scanSnapshot.cacheHit,
+        mutationVersion: scanRuntime.mutationVersion,
+        matchBreakdown,
         scanDurationMs: Math.round(performance.now() - startedAt)
       },
       classified

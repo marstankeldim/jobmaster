@@ -176,12 +176,12 @@ document.getElementById("mark-submitted").addEventListener("click", async () => 
 document.getElementById("generate-cover-letter").addEventListener("click", async () => {
   try {
     await analyzeCurrentPage();
-    const response = await callExtension("jobmaster:generate-cover-letter", { job: inferredJobFromAnalysis() });
+    const response = await callExtension("jobmaster:download-cover-letter", { job: inferredJobFromAnalysis() });
     if (!response.ok) {
       throw new Error(response.error);
     }
     document.getElementById("cover-letter-preview").textContent = response.coverLetter;
-    popupFlash("Generated cover letter preview.");
+    popupFlash(`Downloaded ${response.downloads.filenameBase}.pdf and .tex`);
   } catch (error) {
     popupFlash(error.message || "Could not generate cover letter.", true);
   }

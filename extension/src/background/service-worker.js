@@ -1,4 +1,9 @@
-import { latexToText, renderCoverLetter } from "../shared/cover-letters.js";
+import {
+  buildCoverLetterFilenameBase,
+  buildPdfFromText,
+  latexToText,
+  renderCoverLetter
+} from "../shared/cover-letters.js";
 import { generateProfessionalSummary } from "../shared/summary.js";
 import {
   clearResumeFile,
@@ -27,6 +32,27 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onStartup.addListener(() => {
   ensureDefaults();
 });
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function buildDownloadUrl(bytes, mimeType) {
+  return `data:${mimeType};base64,${bytesToBase64(bytes)}`;
+}
+
+async function downloadBytes(bytes, mimeType, filename) {
+  return chrome.downloads.download({
+    url: buildDownloadUrl(bytes, mimeType),
+    filename,
+    saveAs: false
+  });
+}
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   const { action, payload = {} } = message ?? {};
@@ -118,6 +144,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         break;
       }
 
+      case "jobmaster:download-cover-letter": {
+        const state = await getState();
+        const rendered = renderCoverLetter(state.coverLetterTemplate, payload.job, state.profile);
+        const plainText = latexToText(rendered);
+        const filenameBase = buildCoverLetterFilenameBase(payload.job, state.profile);
+        const texBytes = new TextEncoder().encode(`${rendered}\n`);
+        const pdfBytes = buildPdfFromText(plainText);
+        const texDownloadId = await downloadBytes(texBytes, "application/x-tex;charset=utf-8", `${filenameBase}.tex`);
+        const pdfDownloadId = await downloadBytes(pdfBytes, "application/pdf", `${filenameBase}.pdf`);
+        sendResponse({
+          ok: true,
+          coverLetter: rendered,
+          plainText,
+          downloads: {
+            texDownloadId,
+            pdfDownloadId,
+            filenameBase
+          }
+        });
+        break;
+      }
+
       case "jobmaster:build-autofill-context": {
         const state = await getState();
         const rendered = renderCoverLetter(state.coverLetterTemplate, payload.job, state.profile);
@@ -160,4 +208,3 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   return true;
 });
-
