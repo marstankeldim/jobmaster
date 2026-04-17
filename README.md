@@ -1,121 +1,36 @@
 # Jobmaster
 
-Jobmaster is a local-first job application copilot for your own search. It keeps your resume, recruiter-answer bank, candidate-source data, and LaTeX cover letter template in one place, tracks every application in SQLite, and can optionally autofill supported application forms in a real browser.
+Jobmaster is a local-first job application copilot. It stores candidate data, tracks applications, generates LaTeX cover letters, and helps fill job forms.
 
-## What it does
+## Done
 
-- Stores your candidate profile, recruiter answers, uploaded resume, candidate-source data, and LaTeX cover letter template locally.
-- Tracks jobs, statuses, notes, URLs, generated cover letters, and application activity.
-- Exports your tracker to CSV.
-- Launches a browser autofill run that uses your stored answers to populate common application fields.
-- Generates a professional summary from the profile and stored candidate evidence.
+- Python dashboard for profile, resume, candidate data, cover letters, and application tracking
+- local job tracker with status history and CSV export
+- summary generation from resume, GitHub, LinkedIn, and other candidate data
+- MV3 Chrome extension with settings, popup, on-page assistant, and tracker dashboard
+- semantic autofill with review states, resume upload, and first-pass adapters for Workday, LinkedIn, Greenhouse, and Lever
+- built-in AI draft flow for unresolved application questions when Chrome supports it
+
+## Next
+
+- harden live ATS adapters, especially Workday and LinkedIn variants
+- improve scan quality for complex multi-step forms and custom widgets
+- make generated answers more tailored to company and question style
+- expand tracker workflow around follow-ups, reminders, and interview prep
 
 ## Quick start
 
-1. Initialize your local data files:
-
 ```bash
 python3 -m jobmaster init
-```
-
-2. Start the dashboard:
-
-```bash
 python3 -m jobmaster serve
 ```
 
-3. Open `http://127.0.0.1:8765`, then fill in:
-
-- your profile
-- your resume
-- your recruiter-answer bank
-- your candidate source data
-- your cover letter template
-- your job leads
-
-## Optional autofill setup
-
-The tracker works with Python's standard library. Browser autofill is optional and uses Playwright.
-
-```bash
-python3 -m pip install playwright
-playwright install chromium
-```
-
-Then run:
-
-```bash
-python3 -m jobmaster autofill --job 1
-```
-
-By default the browser opens in headed mode, gives you time to log in, and fills fields for review. Add `--submit` if you want Jobmaster to attempt the final submit click after filling.
-
-## Resume handling
-
-The Settings page gives you two ways to add your resume:
-
-- upload the file into `data/uploads/`
-- point Jobmaster at an existing local path
-
-Autofill uses the saved `resume_path` automatically for file-upload fields.
-
-## Candidate source data
-
-The Settings page includes a JSON editor for structured candidate context such as:
-
-- resume notes or extracted text
-- GitHub profile signals and repositories
-- LinkedIn notes or headline
-- education details
-- project and experience highlights
-- extra recruiter-facing context
-
-You can generate the professional summary from this combined data directly in the dashboard.
-
-## Cover letter placeholders
-
-The cover letter template is stored as LaTeX and uses Python-style placeholders. These are the most useful ones:
-
-- `{company}`
-- `{title}`
-- `{location}`
-- `{full_name}`
-- `{email}`
-- `{phone}`
-- `{summary}`
-- `{top_skills}`
-- `{today}`
-
-Unknown placeholders are left untouched so you can refine your template safely.
-
-## Recruiter-answer bank format
-
-The dashboard lets you edit the answer bank as JSON. Each answer can include aliases to help the autofill matcher recognize similar prompts:
-
-```json
-{
-  "answers": [
-    {
-      "question": "Are you legally authorized to work in the United States?",
-      "answer": "Yes",
-      "aliases": ["authorized to work", "work authorization", "eligible to work"]
-    }
-  ]
-}
-```
+Open `http://127.0.0.1:8765` for the Python app, or load `extension/` as an unpacked Chrome extension.
 
 ## Commands
 
-- `python3 -m jobmaster init`
-- `python3 -m jobmaster serve --host 127.0.0.1 --port 8765`
+- `python3 -m jobmaster serve`
 - `python3 -m jobmaster export --output data/applications.csv`
 - `python3 -m jobmaster generate-summary`
 - `python3 -m jobmaster generate-cover-letter --job 1`
 - `python3 -m jobmaster autofill --job 1`
-
-## Notes
-
-- The autofill engine is generic and works best on straightforward forms such as Greenhouse, Lever, and standard HTML applications.
-- Some sites, especially heavily scripted Workday flows, may need more site-specific tuning.
-- Generated cover letters are written as `.tex` files in `data/generated/`.
-- Your private data stays local unless you choose to sync or commit it elsewhere.
