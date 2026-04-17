@@ -156,6 +156,8 @@
             "[data-automation-id='candidateExperiencePage']",
             "[data-automation-id='jobApplicationPage']",
             "[data-automation-id='applyFlow']",
+            "[data-automation-id='application']",
+            "[data-automation-id='applicationForm']",
             "main"
           ],
           doc
@@ -169,6 +171,7 @@
             "[data-automation-id='pageContent']",
             "[data-automation-id='questionnairePage']",
             "[data-automation-id='panel']",
+            "[data-automation-id='formField']",
             "[role='group']"
           ],
           rootMatch.node
@@ -180,7 +183,9 @@
           { key: "resume_file", pattern: /resume|attachment|upload/, confidence: 0.98, reason: "Workday upload control" },
           { key: "cover_letter_text", pattern: /cover|motivation/, confidence: 0.9, reason: "Workday cover letter control" },
           { key: "given_name", pattern: /first/, confidence: 0.92, reason: "Workday automation id: first name" },
-          { key: "family_name", pattern: /last|family/, confidence: 0.92, reason: "Workday automation id: last name" }
+          { key: "family_name", pattern: /last|family/, confidence: 0.92, reason: "Workday automation id: last name" },
+          { key: "work_authorized_us", pattern: /authorization|authorized/, confidence: 0.93, reason: "Workday work authorization field" },
+          { key: "requires_sponsorship", pattern: /sponsorship|visa/, confidence: 0.93, reason: "Workday sponsorship field" }
         ]),
       normalizeChoice: (field, answer) => {
         if (!field.options?.length) {
@@ -209,11 +214,16 @@
     makePlatform("linkedin", {
       matches: (location) => /linkedin\.com$/i.test(location.hostname) && location.pathname.includes("/jobs"),
       findRoot: (doc) =>
-        firstMatch([".jobs-easy-apply-content", ".jobs-apply-form", "[data-easy-apply-modal]", "main"], doc),
+        firstMatch(
+          [".jobs-easy-apply-modal", ".jobs-easy-apply-content", ".jobs-apply-form", "[data-easy-apply-modal]", "[role='dialog']", "main"],
+          doc
+        ),
       findActiveStep: (rootMatch) =>
         bestVisibleFieldContainer(
           [
+            ".jobs-easy-apply-modal form",
             ".jobs-easy-apply-content form",
+            ".jobs-easy-apply-form-section__grouping div",
             ".jobs-easy-apply-form-section__grouping",
             ".jobs-easy-apply-content section",
             "[role='dialog'] form",
@@ -226,7 +236,8 @@
           { key: "email", pattern: /email/, confidence: 0.95, reason: "LinkedIn field id: email" },
           { key: "tel", pattern: /phone/, confidence: 0.94, reason: "LinkedIn field id: phone" },
           { key: "resume_file", pattern: /resume|upload/, confidence: 0.98, reason: "LinkedIn resume upload" },
-          { key: "cover_letter_text", pattern: /cover letter/, confidence: 0.92, reason: "LinkedIn cover letter field" }
+          { key: "cover_letter_text", pattern: /cover letter/, confidence: 0.92, reason: "LinkedIn cover letter field" },
+          { key: "linkedin_url", pattern: /linkedin/, confidence: 0.95, reason: "LinkedIn profile field" }
         ]),
       detectSubmissionState: (doc) =>
         doc.querySelector(".jobs-easy-apply-review") || doc.querySelector("[aria-label*='Review your application']")
@@ -243,11 +254,13 @@
     makePlatform("greenhouse", {
       matches: (location) => /greenhouse\.io$/i.test(location.hostname) || location.pathname.includes("/jobs/"),
       findRoot: (doc) =>
-        firstMatch(["#application", "form#application_form", "form[action*='greenhouse']", ".application"], doc),
+        firstMatch(["#application", "form#application_form", "form[action*='greenhouse']", ".application", ".main", "main"], doc),
       classifyField: (field) =>
         automationHints(field, [
           { key: "resume_file", pattern: /resume|resume file|cv/, confidence: 0.97, reason: "Greenhouse resume upload" },
-          { key: "cover_letter_text", pattern: /cover letter/, confidence: 0.92, reason: "Greenhouse cover letter" }
+          { key: "cover_letter_text", pattern: /cover letter/, confidence: 0.92, reason: "Greenhouse cover letter" },
+          { key: "linkedin_url", pattern: /linkedin/, confidence: 0.95, reason: "Greenhouse LinkedIn field" },
+          { key: "github_url", pattern: /github/, confidence: 0.95, reason: "Greenhouse GitHub field" }
         ]),
       extractJob: (doc, location) => ({
         title: textContent("h1.app-title", doc) || textContent("h1", doc),
@@ -260,11 +273,13 @@
     makePlatform("lever", {
       matches: (location) => /lever\.co$/i.test(location.hostname),
       findRoot: (doc) =>
-        firstMatch([".application-page", ".application-form", "form.posting-form", "form[action*='lever']"], doc),
+        firstMatch([".application-page", ".application-form", "form.posting-form", "form[action*='lever']", "main"], doc),
       classifyField: (field) =>
         automationHints(field, [
           { key: "resume_file", pattern: /resume|upload|cv/, confidence: 0.97, reason: "Lever resume upload" },
-          { key: "cover_letter_text", pattern: /cover letter/, confidence: 0.92, reason: "Lever cover letter" }
+          { key: "cover_letter_text", pattern: /cover letter/, confidence: 0.92, reason: "Lever cover letter" },
+          { key: "linkedin_url", pattern: /linkedin/, confidence: 0.95, reason: "Lever LinkedIn field" },
+          { key: "github_url", pattern: /github/, confidence: 0.95, reason: "Lever GitHub field" }
         ]),
       extractJob: (doc, location) => ({
         title: textContent(".posting-headline h2", doc) || textContent(".main-header-text h2", doc) || textContent("h1", doc),

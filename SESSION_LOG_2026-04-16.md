@@ -179,6 +179,7 @@ The Chrome extension version was bumped incrementally as changes shipped:
 - `0.2.2`
 - `0.2.3`
 - `0.2.4`
+- `0.3.0`
 
 This created clearer checkpoints while the scan, autofill, and settings behavior evolved.
 
@@ -205,6 +206,9 @@ By the end of the session:
 - autofill logic became more grounded in structured semantics
 - profile settings became closer to real ATS/company application forms
 - answer generation shifted away from duplicated canned questions and toward deriving useful answers from existing user data
+- an on-page assistant workflow was added for detect, review, fill, and tracker actions
+- a tracker dashboard was added for job details, status changes, notes, and event history
+- Chrome built-in AI drafting was wired in as a real fallback path for unresolved questions when available
 
 This does **not** mean autofill is fully solved yet. Real ATS pages still vary heavily, and more live-page tuning will be needed, especially for Workday and LinkedIn variants. But the extension now has a stronger foundation for reliable scanning and smarter answer generation.
 

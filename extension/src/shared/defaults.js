@@ -177,7 +177,7 @@ export const DEFAULT_ANSWERS = {
 
 export const DEFAULT_AUTOFILL_SETTINGS = {
   mode: "conservative",
-  aiFallbackEnabled: false,
+  aiFallbackEnabled: true,
   platformOverrides: {
     workday: true,
     linkedin: true,

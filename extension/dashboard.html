@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jobmaster Tracker</title>
+  <link rel="stylesheet" href="styles/app.css">
+</head>
+<body class="jm-body">
+  <main class="jm-shell jm-dashboard">
+    <section class="jm-hero">
+      <div>
+        <p class="jm-eyebrow">Application Tracker</p>
+        <h1>Jobmaster Tracker</h1>
+        <p class="jm-copy">Review saved jobs, update statuses, and keep the event trail in one place.</p>
+      </div>
+      <div class="jm-button-row">
+        <button id="dashboard-refresh" class="jm-button">Refresh</button>
+        <button id="dashboard-open-settings" class="jm-button jm-button-secondary">Settings</button>
+      </div>
+    </section>
+
+    <section class="jm-card">
+      <div class="jm-card-head">
+        <h2>Pipeline</h2>
+        <p>Status counts from your local extension tracker.</p>
+      </div>
+      <div id="dashboard-stats" class="jm-stats"></div>
+    </section>
+
+    <section class="jm-grid jm-grid-2">
+      <section class="jm-card">
+        <div class="jm-card-head">
+          <h2>Jobs</h2>
+          <p>Search and filter the tracked application list.</p>
+        </div>
+        <div class="jm-form-grid">
+          <label>
+            Search
+            <input id="job-search" type="search" placeholder="Company, role, source, notes">
+          </label>
+          <label>
+            Status
+            <select id="job-status-filter">
+              <option value="">All statuses</option>
+            </select>
+          </label>
+        </div>
+        <div id="dashboard-job-list" class="jm-stack jm-list-scroll"></div>
+      </section>
+
+      <section class="jm-card">
+        <div class="jm-card-head">
+          <h2>Details</h2>
+          <p>Update status, notes, and review the event trail.</p>
+        </div>
+        <div id="job-detail-empty" class="jm-inline-note">Select a job to inspect it here.</div>
+        <div id="job-detail" hidden>
+          <div class="jm-stack">
+            <div>
+              <p class="jm-eyebrow">Selected Job</p>
+              <h2 id="detail-title"></h2>
+              <p id="detail-company" class="jm-copy"></p>
+            </div>
+            <dl class="jm-definition-list">
+              <div><dt>Location</dt><dd id="detail-location">—</dd></div>
+              <div><dt>Source</dt><dd id="detail-source">—</dd></div>
+              <div><dt>URL</dt><dd id="detail-url">—</dd></div>
+              <div><dt>Updated</dt><dd id="detail-updated">—</dd></div>
+            </dl>
+            <div class="jm-form-grid">
+              <label>
+                Status
+                <select id="detail-status"></select>
+              </label>
+              <label>
+                Submitted At
+                <input id="detail-submitted" type="text" disabled>
+              </label>
+              <label class="jm-span-all">
+                Notes
+                <textarea id="detail-notes" rows="6" placeholder="Interview prep, salary notes, recruiter follow-up, and anything else helpful."></textarea>
+              </label>
+            </div>
+            <div class="jm-button-row">
+              <button id="detail-save" class="jm-button">Save Changes</button>
+              <a id="detail-open-link" class="jm-button jm-button-ghost" href="#" target="_blank" rel="noreferrer">Open Job Page</a>
+            </div>
+            <div>
+              <p class="jm-eyebrow">Event Timeline</p>
+              <div id="detail-events" class="jm-stack"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <p id="dashboard-flash" class="jm-flash" hidden></p>
+  </main>
+  <script type="module" src="src/dashboard/dashboard.js"></script>
+</body>
+</html>

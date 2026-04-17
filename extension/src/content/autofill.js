@@ -105,6 +105,40 @@
     return "";
   }
 
+  function nearestPromptText(element) {
+    let current = element;
+    while (current && current !== document.body) {
+      const prompt = current.querySelector?.(
+        "label, legend, [role='heading'], h1, h2, h3, h4, h5, h6, .jobs-easy-apply-form-section__grouping, .artdeco-text-input--label, .css-1wa3eu0-placeholder"
+      );
+      if (prompt) {
+        const text = cleanText(prompt.innerText || prompt.textContent);
+        if (text) {
+          return text;
+        }
+      }
+      let sibling = current.previousElementSibling;
+      while (sibling) {
+        const text = cleanText(sibling.innerText || sibling.textContent);
+        if (text && text.length <= 180) {
+          return text;
+        }
+        sibling = sibling.previousElementSibling;
+      }
+      current = current.parentElement;
+    }
+    return "";
+  }
+
+  function describedByText(element) {
+    const values = [
+      readTextByIds(element.getAttribute("aria-describedby")),
+      readTextByIds(element.getAttribute("aria-details")),
+      cleanText(element.closest("[aria-describedby]")?.getAttribute("aria-describedby"))
+    ];
+    return unique(values.map((value) => readTextByIds(value) || cleanText(value))).join(" | ");
+  }
+
   function sectionPathForElement(element) {
     const parts = [];
     const fieldset = element.closest("fieldset");
@@ -145,6 +179,11 @@
     if (fieldset) {
       names.push(cleanText(fieldset.querySelector("legend")?.textContent));
     }
+    names.push(describedByText(element));
+    names.push(nearestPromptText(element));
+    names.push(cleanText(element.getAttribute("data-automation-id")));
+    names.push(cleanText(element.getAttribute("data-testid")));
+    names.push(cleanText(element.getAttribute("data-qa")));
     return unique(names).join(" | ");
   }
 
@@ -267,7 +306,12 @@
       groupName: "",
       sectionPath: sectionPathForElement(element),
       rawAutocomplete: element.getAttribute("autocomplete") || "",
-      automationId: element.getAttribute("data-automation-id") || element.dataset?.automationId || "",
+      automationId:
+        element.getAttribute("data-automation-id") ||
+        element.dataset?.automationId ||
+        element.getAttribute("data-testid") ||
+        element.getAttribute("data-qa") ||
+        "",
       options: optionListForField(element)
     };
     const resolved = createResolvedField(base);
@@ -297,7 +341,12 @@
       groupName,
       sectionPath: sectionPathForElement(first),
       rawAutocomplete: first.getAttribute("autocomplete") || "",
-      automationId: first.getAttribute("data-automation-id") || first.dataset?.automationId || "",
+      automationId:
+        first.getAttribute("data-automation-id") ||
+        first.dataset?.automationId ||
+        first.getAttribute("data-testid") ||
+        first.getAttribute("data-qa") ||
+        "",
       options: optionListForControls(controls, labelIndex)
     };
     const resolved = createResolvedField(base);
@@ -665,7 +714,7 @@
         function controlsFor(fieldId) {
           return [...document.querySelectorAll("[" + FIELD_ATTR + "='" + CSS.escape(fieldId) + "']")];
         }
-        window.addEventListener("message", (event) => {
+        window.addEventListener("message", async (event) => {
           if (event.source !== window || event.data?.source !== ${JSON.stringify(BRIDGE_REQUEST_SOURCE)}) {
             return;
           }
@@ -706,6 +755,37 @@
                 setChecked(target, true);
                 ok = target.checked === true;
               }
+            } else if (command === "ai-answer") {
+              const LanguageModelApi = window.LanguageModel || self.LanguageModel;
+              if (!LanguageModelApi) {
+                throw new Error("Chrome built-in Prompt API is unavailable.");
+              }
+              const io = {
+                expectedInputs: [{ type: "text", languages: ["en"] }],
+                expectedOutputs: [{ type: "text", languages: ["en"] }]
+              };
+              const availability = await LanguageModelApi.availability(io);
+              if (availability === "unavailable") {
+                throw new Error("Built-in AI is unavailable on this browser or device.");
+              }
+              const session = await LanguageModelApi.create({
+                ...io,
+                initialPrompts: [
+                  {
+                    role: "system",
+                    content: payload.systemPrompt
+                  }
+                ]
+              });
+              const text = await session.prompt(payload.userPrompt);
+              ok = true;
+              window.postMessage({
+                source: ${JSON.stringify(BRIDGE_RESPONSE_SOURCE)},
+                requestId,
+                ok,
+                text: cleanText(text)
+              }, "*");
+              return;
             }
             window.postMessage({ source: ${JSON.stringify(BRIDGE_RESPONSE_SOURCE)}, requestId, ok }, "*");
           } catch (error) {
@@ -741,7 +821,11 @@
     }
     clearTimeout(pending.timeoutId);
     scanRuntime.bridgePending.delete(event.data.requestId);
-    pending.resolve({ ok: Boolean(event.data.ok), error: event.data.error || "" });
+    pending.resolve({
+      ok: Boolean(event.data.ok),
+      error: event.data.error || "",
+      text: event.data.text || ""
+    });
   });
 
   async function fillField(field, match, adapter, context) {
@@ -830,6 +914,219 @@
       : { filled: false, skippedReason: "value did not persist" };
   }
 
+  function buildMatchEntry(field, match) {
+    return {
+      fieldId: field.fieldId,
+      label: field.questionText || field.signalText || "<unnamed>",
+      kind: field.kind,
+      taxonomyKey: match.taxonomyKey,
+      source: match.source,
+      confidence: match.confidence,
+      decision: match.decision,
+      reason: match.reason,
+      skipReason: match.skipReason,
+      selectedAnswer: match.selectedAnswer,
+      selectedAnswerPreview: cleanText(match.selectedAnswer).slice(0, 160),
+      optionsPreview: (field.options || []).slice(0, 8).map((option) => option.label || option.value).filter(Boolean),
+      sectionPath: field.sectionPath || "",
+      policyBucket: field.policyBucket || ""
+    };
+  }
+
+  function matchSnapshotFields(scanSnapshot, answerContext, adapterName) {
+    const filled = [];
+    const review = [];
+    const skipped = [];
+    const matches = [];
+    const fieldsById = new Map();
+
+    for (const field of scanSnapshot.fields) {
+      fieldsById.set(field.fieldId, field);
+      const match = CORE.matchResolvedField(field, answerContext, adapterName);
+      const entry = buildMatchEntry(field, match);
+      matches.push(entry);
+      if (match.decision === "fill") {
+        filled.push(entry);
+      } else if (match.decision === "review") {
+        review.push(entry);
+      } else {
+        skipped.push(entry);
+      }
+    }
+
+    return { filled, review, skipped, matches, fieldsById };
+  }
+
+  function matchBreakdownForEntries(matches) {
+    return matches.reduce((accumulator, item) => {
+      const key = item.source || item.decision;
+      accumulator[key] = (accumulator[key] || 0) + 1;
+      return accumulator;
+    }, {});
+  }
+
+  function aiSystemPrompt() {
+    return cleanText(`
+      You write one truthful job application answer at a time.
+      Use only the candidate information you are given.
+      Do not invent employers, dates, degrees, metrics, sponsorship status, or technologies.
+      If the information is missing, return an empty response.
+      Keep answers concise, professional, and ready to paste into an application.
+      For yes/no questions, answer with exactly "Yes" or "No" when the evidence is clear.
+      For year or dropdown questions, return a single matching option when possible.
+    `);
+  }
+
+  function aiUserPrompt(field, context, answerContext) {
+    const structured = answerContext.structuredProfile || {};
+    const candidateSources = context.candidateSources || {};
+    const evidence = [
+      `Field label: ${field.questionText || field.signalText || "Unknown field"}`,
+      `Field kind: ${field.kind}`,
+      field.sectionPath ? `Section: ${field.sectionPath}` : "",
+      field.policyBucket ? `Policy bucket: ${field.policyBucket}` : "",
+      field.options?.length ? `Allowed options: ${field.options.map((option) => option.label || option.value).join(" | ")}` : "",
+      structured.full_name ? `Candidate name: ${structured.full_name}` : "",
+      structured.summary ? `Summary: ${structured.summary}` : "",
+      structured.top_skills ? `Skills: ${structured.top_skills}` : "",
+      structured.current_title ? `Current title: ${structured.current_title}` : "",
+      structured.current_company ? `Current company: ${structured.current_company}` : "",
+      structured.years_experience ? `Years of experience: ${structured.years_experience}` : "",
+      structured.highest_degree ? `Degree: ${structured.highest_degree}` : "",
+      structured.major ? `Major: ${structured.major}` : "",
+      structured.school ? `School: ${structured.school}` : "",
+      structured.graduation_date || structured.graduation_year
+        ? `Graduation: ${structured.graduation_date || structured.graduation_year}`
+        : "",
+      structured.work_authorized_us ? `Authorized to work in US: ${structured.work_authorized_us}` : "",
+      structured.requires_sponsorship ? `Requires sponsorship: ${structured.requires_sponsorship}` : "",
+      structured.preferred_location ? `Preferred location: ${structured.preferred_location}` : "",
+      structured.preferred_workplace ? `Preferred workplace: ${structured.preferred_workplace}` : "",
+      candidateSources.extra_context ? `Extra context: ${candidateSources.extra_context}` : "",
+      (candidateSources.project_highlights || []).length
+        ? `Project highlights: ${(candidateSources.project_highlights || []).join(" | ")}`
+        : "",
+      (candidateSources.experience_highlights || []).length
+        ? `Experience highlights: ${(candidateSources.experience_highlights || []).join(" | ")}`
+        : "",
+      answerContext.derivedAnswers?.background_statement
+        ? `Background summary: ${answerContext.derivedAnswers.background_statement}`
+        : ""
+    ].filter(Boolean);
+
+    return cleanText(`
+      Draft the best answer for this single application field.
+      If the field asks for information not supported by the evidence, return nothing.
+      Return only the final answer text with no bullets, no labels, and no explanation.
+
+      ${evidence.join("\n")}
+    `);
+  }
+
+  async function generateAiAnswer(context, fieldId) {
+    const answerContext = CORE.buildAnswerContext(context);
+    const scanTarget = resolveScanTarget(context.autofillSettings);
+    ensureScanObserver(scanTarget.rootMatch.node);
+    const scanSnapshot = getScanSnapshot(
+      scanTarget,
+      JSON.stringify(context.autofillSettings?.platformOverrides || {})
+    );
+    const field = scanSnapshot.fields.find((item) => item.fieldId === fieldId);
+    if (!field) {
+      throw new Error("Field is no longer available on this page.");
+    }
+    const bridgeResult = await bridgeFill("ai-answer", {
+      fieldId,
+      systemPrompt: aiSystemPrompt(),
+      userPrompt: aiUserPrompt(field, context, answerContext)
+    });
+    if (!bridgeResult.ok) {
+      throw new Error(bridgeResult.error || "AI answer generation failed.");
+    }
+    return {
+      fieldId,
+      answer: cleanText(bridgeResult.text)
+    };
+  }
+
+  async function fillCustomAnswers(context, answersByFieldId = {}) {
+    const scanTarget = resolveScanTarget(context.autofillSettings);
+    ensureScanObserver(scanTarget.rootMatch.node);
+    const scanSnapshot = getScanSnapshot(
+      scanTarget,
+      JSON.stringify(context.autofillSettings?.platformOverrides || {})
+    );
+    const filled = [];
+    const skipped = [];
+    for (const [fieldId, selectedAnswer] of Object.entries(answersByFieldId)) {
+      const field = scanSnapshot.fields.find((item) => item.fieldId === fieldId);
+      if (!field || !cleanText(selectedAnswer)) {
+        continue;
+      }
+      const entry = {
+        fieldId,
+        label: field.questionText || field.signalText || "<unnamed>",
+        kind: field.kind,
+        selectedAnswer
+      };
+      const outcome = await fillField(
+        field,
+        {
+          selectedAnswer,
+          reason: "assistant-generated answer"
+        },
+        scanTarget.adapter,
+        context
+      );
+      if (outcome.filled) {
+        filled.push({
+          ...entry,
+          fillMethod: outcome.method
+        });
+      } else {
+        skipped.push({
+          ...entry,
+          skipReason: outcome.skippedReason
+        });
+      }
+    }
+    return { filled, skipped };
+  }
+
+  function previewAutofill(context) {
+    const startedAt = performance.now();
+    const answerContext = CORE.buildAnswerContext(context);
+    const scanTarget = resolveScanTarget(context.autofillSettings);
+    ensureScanObserver(scanTarget.rootMatch.node);
+    const scanSnapshot = getScanSnapshot(
+      scanTarget,
+      JSON.stringify(context.autofillSettings?.platformOverrides || {})
+    );
+    const matched = matchSnapshotFields(scanSnapshot, answerContext, scanTarget.adapter.name);
+    return {
+      filled: matched.filled,
+      review: matched.review,
+      skipped: matched.skipped,
+      matches: matched.matches,
+      metrics: {
+        ...scanSnapshot.metrics,
+        platform: scanTarget.adapter.name,
+        rootSelectorUsed: scanSnapshot.rootSelectorUsed,
+        stepSelectorUsed: scanSnapshot.stepSelectorUsed,
+        attemptedScopes: scanSnapshot.attemptedScopes,
+        submissionState: scanSnapshot.submissionState,
+        fieldCountMatched: matched.matches.filter((item) => item.decision !== "skip" || item.source).length,
+        fieldCountReview: matched.review.length,
+        fieldCountFilled: matched.filled.length,
+        fieldCountSkipped: matched.skipped.length,
+        cacheHit: scanSnapshot.cacheHit,
+        mutationVersion: scanRuntime.mutationVersion,
+        matchBreakdown: matchBreakdownForEntries(matched.matches),
+        scanDurationMs: Math.round(performance.now() - startedAt)
+      }
+    };
+  }
+
   function summarizeScan(session) {
     return {
       platform: session.platform,
@@ -879,47 +1176,38 @@
 
   async function runAutofill(context) {
     const startedAt = performance.now();
-    const answerContext = CORE.buildAnswerContext(context);
     const scanTarget = resolveScanTarget(context.autofillSettings);
     ensureScanObserver(scanTarget.rootMatch.node);
     const scanSnapshot = getScanSnapshot(
       scanTarget,
       JSON.stringify(context.autofillSettings?.platformOverrides || {})
     );
+    const answerContext = CORE.buildAnswerContext(context);
+    const preview = matchSnapshotFields(scanSnapshot, answerContext, scanTarget.adapter.name);
     const filled = [];
-    const review = [];
-    const skipped = [];
+    const review = [...preview.review];
+    const skipped = [...preview.skipped];
     const matches = [];
+    const skippedByFieldId = new Map(skipped.map((entry) => [entry.fieldId, entry]));
+    const previewByFieldId = new Map(preview.matches.map((entry) => [entry.fieldId, entry]));
 
     for (const field of scanSnapshot.fields) {
-      const match = CORE.matchResolvedField(field, answerContext, scanTarget.adapter.name);
-      const entry = {
-        fieldId: field.fieldId,
-        label: field.questionText || field.signalText || "<unnamed>",
-        kind: field.kind,
-        taxonomyKey: match.taxonomyKey,
-        source: match.source,
-        confidence: match.confidence,
-        decision: match.decision,
-        reason: match.reason,
-        skipReason: match.skipReason,
-        selectedAnswerPreview: cleanText(match.selectedAnswer).slice(0, 120)
-      };
-
-      if (match.decision === "review") {
-        review.push(entry);
-        matches.push(entry);
+      const previewEntry = previewByFieldId.get(field.fieldId);
+      if (!previewEntry || previewEntry.decision !== "fill") {
         continue;
       }
-
-      if (match.decision === "skip") {
-        skipped.push(entry);
-        matches.push(entry);
-        continue;
-      }
+      const entry = { ...previewEntry };
 
       try {
-        const outcome = await fillField(field, match, scanTarget.adapter, context);
+        const outcome = await fillField(
+          field,
+          {
+            selectedAnswer: previewEntry.selectedAnswer,
+            reason: previewEntry.reason
+          },
+          scanTarget.adapter,
+          context
+        );
         if (outcome.filled) {
           entry.fillMethod = outcome.method;
           filled.push(entry);
@@ -927,20 +1215,24 @@
           entry.decision = "skip";
           entry.skipReason = outcome.skippedReason;
           skipped.push(entry);
+          skippedByFieldId.set(entry.fieldId, entry);
         }
       } catch (error) {
         entry.decision = "skip";
         entry.skipReason = error instanceof Error ? error.message : String(error);
         skipped.push(entry);
+        skippedByFieldId.set(entry.fieldId, entry);
       }
-      matches.push(entry);
     }
 
-    const matchBreakdown = matches.reduce((accumulator, item) => {
-      const key = item.source || item.decision;
-      accumulator[key] = (accumulator[key] || 0) + 1;
-      return accumulator;
-    }, {});
+    for (const entry of preview.matches) {
+      if (entry.decision === "fill") {
+        const filledEntry = filled.find((item) => item.fieldId === entry.fieldId);
+        matches.push(filledEntry || skippedByFieldId.get(entry.fieldId) || entry);
+      } else {
+        matches.push(entry);
+      }
+    }
 
     const result = {
       filled,
@@ -960,7 +1252,7 @@
         fieldCountSkipped: skipped.length,
         cacheHit: scanSnapshot.cacheHit,
         mutationVersion: scanRuntime.mutationVersion,
-        matchBreakdown,
+        matchBreakdown: matchBreakdownForEntries(matches),
         scanDurationMs: Math.round(performance.now() - startedAt)
       }
     };
@@ -970,6 +1262,9 @@
 
   globalScope.JobmasterAutofill = {
     analyzeCurrentPage,
+    previewAutofill,
+    fillCustomAnswers,
+    generateAiAnswer,
     runAutofill
   };
 })(globalThis);

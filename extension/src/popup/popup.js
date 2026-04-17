@@ -231,6 +231,10 @@ document.getElementById("open-options").addEventListener("click", async () => {
   await callExtension("jobmaster:open-options");
 });
 
+document.getElementById("open-dashboard").addEventListener("click", async () => {
+  await callExtension("jobmaster:open-dashboard");
+});
+
 document.getElementById("refresh-analysis").addEventListener("click", async () => {
   try {
     const tab = activeTab ?? (await getActiveTab());
@@ -294,6 +298,21 @@ document.getElementById("generate-cover-letter").addEventListener("click", async
     popupFlash(`Downloaded ${response.downloads.filenameBase}.pdf and .tex`);
   } catch (error) {
     popupFlash(error.message || "Could not generate cover letter.", true);
+  }
+});
+
+document.getElementById("open-assistant").addEventListener("click", async () => {
+  try {
+    await analyzeCurrentPage();
+    const response = await chrome.tabs.sendMessage(activeTab.id, {
+      action: "jobmaster:open-assistant"
+    });
+    if (!response?.ok) {
+      throw new Error(response?.error || "Could not open assistant.");
+    }
+    popupFlash("Opened the on-page assistant.");
+  } catch (error) {
+    popupFlash(error.message || "Could not open assistant.", true);
   }
 });
 

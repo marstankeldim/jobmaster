@@ -14,6 +14,8 @@ import {
   getJob,
   getResumeAsset,
   getState,
+  listEvents,
+  listJobs,
   importPackage,
   recordScanRun,
   recentScanRuns,
@@ -125,7 +127,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
 
       case "jobmaster:list-jobs":
-        sendResponse({ ok: true, jobs: await recentJobs(payload.limit ?? 100) });
+        sendResponse({ ok: true, jobs: payload.all ? await listJobs() : await recentJobs(payload.limit ?? 100) });
+        break;
+
+      case "jobmaster:list-events":
+        sendResponse({ ok: true, events: await listEvents(payload.jobId ?? null, payload.limit ?? 50) });
         break;
 
       case "jobmaster:get-job":
@@ -213,6 +219,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
       case "jobmaster:open-options":
         await chrome.runtime.openOptionsPage();
+        sendResponse({ ok: true });
+        break;
+
+      case "jobmaster:open-dashboard":
+        await chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
         sendResponse({ ok: true });
         break;
 
